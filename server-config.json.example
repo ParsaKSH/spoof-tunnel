@@ -1,0 +1,67 @@
+{
+  "_comment": "High-performance server configuration with reliability and FEC",
+
+  "mode": "server",
+
+  "transport": {
+    "type": "icmp",
+    "icmp_mode": "echo",
+    "protocol_number": 0,
+    "_type_options": ["udp", "icmp", "raw"],
+    "_protocol_number_comment": "Only used when type is 'raw'. Examples: 41=IPv6, 47=GRE, 50=ESP"
+  },
+
+  "listen": {
+    "address": "0.0.0.0",
+    "port": 8080
+  },
+
+  "spoof": {
+    "source_ip": "YOUR_SPOOF_SOURCE_IP",
+    "source_ipv6": "",
+    "peer_spoof_ip": "EXPECTED_CLIENT_SPOOF_IP",
+    "peer_spoof_ipv6": "",
+    "client_real_ip": "CLIENT_REAL_IP_FOR_RESPONSES",
+    "client_real_ipv6": ""
+  },
+
+  "crypto": {
+    "private_key": "YOUR_PRIVATE_KEY_BASE64",
+    "peer_public_key": "CLIENT_PUBLIC_KEY_BASE64"
+  },
+
+  "performance": {
+    "buffer_size": 131072,
+    "mtu": 1400,
+    "session_timeout": 600,
+    "workers": 16,
+    "read_buffer": 16777216,
+    "write_buffer": 16777216
+  },
+
+  "reliability": {
+    "enabled": true,
+    "window_size": 128,
+    "retransmit_timeout_ms": 300,
+    "max_retries": 5,
+    "ack_interval_ms": 50
+  },
+
+  "fec": {
+    "enabled": true,
+    "data_shards": 10,
+    "parity_shards": 3,
+    "_comment": "FEC using Reed-Solomon. Can recover up to parity_shards lost packets per group. Overhead: parity/data ratio (here 30%)"
+  },
+
+  "keepalive": {
+    "enabled": true,
+    "interval_seconds": 30,
+    "timeout_seconds": 120
+  },
+
+  "logging": {
+    "level": "info",
+    "file": ""
+  }
+}

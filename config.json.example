@@ -1,0 +1,62 @@
+{
+  "_comment": "Full-Spoof Tunnel Configuration",
+
+  "mode": "client",
+
+  "transport": {
+    "type": "udp",
+    "icmp_mode": "echo",
+    "protocol_number": 0,
+    "_type_options": ["udp", "icmp", "raw"],
+    "_icmp_mode_options": ["echo", "reply"],
+    "_protocol_number_comment": "Custom IP protocol number (1-255), only used when type is 'raw'. Examples: 41=IPv6, 47=GRE, 50=ESP, 41=SIT"
+  },
+
+  "listen": {
+    "address": "127.0.0.1",
+    "port": 1080,
+    "_comment": "For client: SOCKS5 listen address. For server: tunnel listen address"
+  },
+
+  "server": {
+    "address": "1.2.3.4",
+    "port": 8080,
+    "_comment": "Remote server address (only for client mode)"
+  },
+
+  "spoof": {
+    "source_ip": "5.6.7.8",
+    "source_ipv6": "2001:db8::1",
+    "peer_spoof_ip": "9.10.11.12",
+    "peer_spoof_ipv6": "2001:db8::2",
+    "_comment": "source_ip: IP to use as source when sending packets. peer_spoof_ip: Expected source IP of incoming packets from peer"
+  },
+
+  "crypto": {
+    "private_key": "",
+    "peer_public_key": "",
+    "_comment": "Generate keys with: ./spoof generate-keys"
+  },
+
+  "performance": {
+    "buffer_size": 65535,
+    "mtu": 1400,
+    "session_timeout": 90,
+    "workers": 4,
+    "read_buffer": 4194304,
+    "write_buffer": 4194304
+  },
+
+  "fec": {
+    "enabled": false,
+    "data_shards": 10,
+    "parity_shards": 3,
+    "_comment": "Forward Error Correction using Reed-Solomon. data_shards + parity_shards <= 256. Can recover up to parity_shards lost packets per group."
+  },
+
+  "logging": {
+    "level": "info",
+    "file": "",
+    "_level_options": ["debug", "info", "warn", "error"]
+  }
+}
