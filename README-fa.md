@@ -109,12 +109,12 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o spoof ./cmd/s
 
 **در سمت سرور:**
 ```bash
-sudo ./spoof -c server-client-config.json
+sudo ./spoof -c server-config.json
 ```
 
 **در سمت کلاینت:**
 ```bash
-sudo ./spoof -c client-client-config.json
+sudo ./spoof -c client-config.json
 ```
 به محض اتصال موفقیت آمیز، کلاینت یک پروکسی SOCKS5 روی پورت `127.0.0.1:1080` (به صورت پیش‌فرض) باز خواهد کرد که ترافیک آن کاملا امن و از طریق تونل اسپوف شده مسیریابی می‌شود.
 

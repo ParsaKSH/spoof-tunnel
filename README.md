@@ -106,12 +106,12 @@ Before starting the tunnel, you need to generate a pair of Base64 private/public
 
 **On the Server:**
 ```bash
-sudo ./spoof -c server-client-config.json
+sudo ./spoof -c server-config.json
 ```
 
 **On the Client:**
 ```bash
-sudo ./spoof -c client-client-config.json
+sudo ./spoof -c client-config.json
 ```
 Once the client connects, it will open a SOCKS5 proxy on `127.0.0.1:1080` (by default) that securely routes through the spoofed tunnel.
 
