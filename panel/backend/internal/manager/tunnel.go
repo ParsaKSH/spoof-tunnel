@@ -1,0 +1,301 @@
+package manager
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/ParsaKSH/spooftunnel/panel/internal/db"
+	"gorm.io/gorm"
+)
+
+// TunnelStatus represents the tunnel process status
+type TunnelStatus string
+
+const (
+	StatusStopped  TunnelStatus = "stopped"
+	StatusRunning  TunnelStatus = "running"
+	StatusStarting TunnelStatus = "starting"
+	StatusError    TunnelStatus = "error"
+)
+
+// Manager manages the spoof-tunnel process
+type Manager struct {
+	db         *gorm.DB
+	binaryPath string
+	configPath string
+
+	cmd    *exec.Cmd
+	status TunnelStatus
+	error  string
+	mu     sync.Mutex
+
+	// Log streaming
+	logLines []string
+	logMu    sync.RWMutex
+	logCh    chan string
+	maxLogs  int
+
+	// Stats
+	startTime  time.Time
+	bytesSent  int64
+	bytesRecv  int64
+}
+
+// NewManager creates a new tunnel manager
+func NewManager(database *gorm.DB, binaryPath, configDir string) *Manager {
+	return &Manager{
+		db:         database,
+		binaryPath: binaryPath,
+		configPath: filepath.Join(configDir, "tunnel-config.json"),
+		status:     StatusStopped,
+		logLines:   make([]string, 0, 1000),
+		logCh:      make(chan string, 100),
+		maxLogs:    1000,
+	}
+}
+
+// Status returns current tunnel status
+func (m *Manager) Status() (TunnelStatus, string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.status, m.error
+}
+
+// Start starts the tunnel process
+func (m *Manager) Start() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.status == StatusRunning {
+		return fmt.Errorf("tunnel already running")
+	}
+
+	// Generate config from DB
+	if err := m.generateConfig(); err != nil {
+		return fmt.Errorf("generate config: %w", err)
+	}
+
+	m.status = StatusStarting
+
+	// Start the binary
+	m.cmd = exec.Command(m.binaryPath, "-c", m.configPath)
+	m.cmd.Env = append(os.Environ(), "GODEBUG=madvdontneed=1")
+
+	// Capture stdout and stderr
+	stdout, err := m.cmd.StdoutPipe()
+	if err != nil {
+		m.status = StatusError
+		m.error = err.Error()
+		return err
+	}
+	stderr, err := m.cmd.StderrPipe()
+	if err != nil {
+		m.status = StatusError
+		m.error = err.Error()
+		return err
+	}
+
+	if err := m.cmd.Start(); err != nil {
+		m.status = StatusError
+		m.error = err.Error()
+		return err
+	}
+
+	m.status = StatusRunning
+	m.error = ""
+	m.startTime = time.Now()
+
+	// Stream logs
+	go m.streamLogs(stdout)
+	go m.streamLogs(stderr)
+
+	// Wait for process to exit
+	go func() {
+		err := m.cmd.Wait()
+		m.mu.Lock()
+		if m.status == StatusRunning {
+			m.status = StatusStopped
+			if err != nil {
+				m.status = StatusError
+				m.error = err.Error()
+			}
+		}
+		m.mu.Unlock()
+	}()
+
+	return nil
+}
+
+// Stop stops the tunnel process
+func (m *Manager) Stop() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.cmd == nil || m.cmd.Process == nil {
+		m.status = StatusStopped
+		return nil
+	}
+
+	m.status = StatusStopped
+	return m.cmd.Process.Kill()
+}
+
+// Restart restarts the tunnel
+func (m *Manager) Restart() error {
+	m.Stop()
+	time.Sleep(500 * time.Millisecond)
+	return m.Start()
+}
+
+// Uptime returns tunnel uptime
+func (m *Manager) Uptime() time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.status != StatusRunning {
+		return 0
+	}
+	return time.Since(m.startTime)
+}
+
+// GetLogs returns recent log lines
+func (m *Manager) GetLogs(n int) []string {
+	m.logMu.RLock()
+	defer m.logMu.RUnlock()
+
+	if n <= 0 || n > len(m.logLines) {
+		n = len(m.logLines)
+	}
+	start := len(m.logLines) - n
+	result := make([]string, n)
+	copy(result, m.logLines[start:])
+	return result
+}
+
+// LogChannel returns the log channel for WebSocket streaming
+func (m *Manager) LogChannel() <-chan string {
+	return m.logCh
+}
+
+func (m *Manager) streamLogs(reader io.Reader) {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 4096), 4096)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		m.logMu.Lock()
+		m.logLines = append(m.logLines, line)
+		if len(m.logLines) > m.maxLogs {
+			m.logLines = m.logLines[len(m.logLines)-m.maxLogs:]
+		}
+		m.logMu.Unlock()
+
+		// Non-blocking send to channel
+		select {
+		case m.logCh <- line:
+		default:
+		}
+	}
+}
+
+// generateConfig builds a config.json from database records
+func (m *Manager) generateConfig() error {
+	var cfg db.ServerConfig
+	if err := m.db.First(&cfg).Error; err != nil {
+		return err
+	}
+
+	var inbounds []db.Inbound
+	m.db.Where("enabled = ?", true).Find(&inbounds)
+
+	// Build the config structure spoof-tunnel expects
+	tunnelCfg := map[string]interface{}{
+		"mode": cfg.Mode,
+		"transport": map[string]interface{}{
+			"type": cfg.TransportType,
+		},
+		"listen": map[string]interface{}{
+			"address": "0.0.0.0",
+			"port":    cfg.ListenPort,
+		},
+		"server": map[string]interface{}{
+			"address": cfg.ServerAddress,
+			"port":    cfg.ServerPort,
+		},
+		"spoof": map[string]interface{}{
+			"source_ip":     cfg.SpoofSourceIP,
+			"peer_spoof_ip": cfg.SpoofPeerIP,
+			"client_real_ip": cfg.ClientRealIP,
+		},
+		"crypto": map[string]interface{}{
+			"private_key":    cfg.PrivateKey,
+			"peer_public_key": cfg.PeerPublicKey,
+		},
+		"performance": map[string]interface{}{
+			"buffer_size":     cfg.BufferSize,
+			"mtu":             cfg.MTU,
+			"session_timeout": cfg.SessionTimeout,
+			"workers":         cfg.Workers,
+		},
+		"reliability": map[string]interface{}{
+			"enabled": cfg.ReliabilityEnabled,
+		},
+		"fec": map[string]interface{}{
+			"enabled": cfg.FECEnabled,
+		},
+		"logging": map[string]interface{}{
+			"level": cfg.LogLevel,
+		},
+	}
+
+	// Add relay_forward if set
+	if cfg.RelayForward != "" {
+		tunnelCfg["relay_forward"] = cfg.RelayForward
+	}
+	if cfg.RelayPort > 0 {
+		tunnelCfg["relay_port"] = cfg.RelayPort
+	}
+
+	// Build inbounds array
+	if len(inbounds) > 0 {
+		inboundList := make([]map[string]interface{}, 0, len(inbounds))
+		for _, inb := range inbounds {
+			entry := map[string]interface{}{
+				"type":   inb.Type,
+				"listen": inb.Listen,
+			}
+			if inb.Target != "" {
+				entry["target"] = inb.Target
+			}
+			if inb.RemotePort > 0 {
+				entry["remote_port"] = inb.RemotePort
+			}
+			inboundList = append(inboundList, entry)
+		}
+		tunnelCfg["inbounds"] = inboundList
+	}
+
+	data, err := json.MarshalIndent(tunnelCfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(m.configPath)
+	os.MkdirAll(dir, 0755)
+
+	log.Printf("[manager] writing config to %s", m.configPath)
+	return os.WriteFile(m.configPath, data, 0600)
+}
+
+// BinaryPath returns the path to the spoof binary
+func (m *Manager) BinaryPath() string {
+	return m.binaryPath
+}
