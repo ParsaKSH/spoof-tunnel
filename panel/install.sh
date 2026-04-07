@@ -45,7 +45,7 @@ echo -e "${GREEN}Detected: ${OS}/${ARCH}${NC}"
 
 # Get latest release
 echo -e "${YELLOW}Fetching latest release...${NC}"
-LATEST=$(curl -s "https://api.github.com/repos/${REPO}/releases" | grep -o '"tag_name": *"panel-v[^"]*"' | head -1 | grep -o 'panel-v[^"]*')
+LATEST=$(curl -s "https://api.github.com/repos/${REPO}/releases" | grep -o '"tag_name": *"v[^"]*"' | head -1 | grep -o 'v[^"]*')
 
 if [ -z "$LATEST" ]; then
     echo -e "${YELLOW}No panel release found, using latest tag...${NC}"

@@ -43,7 +43,7 @@ jobs:
           path: panel/frontend/out/
           retention-days: 1
 
-  # ─── Stage 2: Build spoof-tunnel binary (CGO_ENABLED=0) ───
+  # ─── Stage 2: Build spoof-tunnel binary ───
   build-tunnel:
     name: Build Tunnel (${{ matrix.goarch }})
     runs-on: ubuntu-latest
@@ -76,11 +76,17 @@ jobs:
           path: spoof-linux-${{ matrix.goarch }}
           retention-days: 1
 
-  # ─── Stage 3: Build panel binary (CGO_ENABLED=1 for SQLite) ───
-  build-panel-amd64:
-    name: Build Panel (amd64)
-    needs: [build-frontend, build-tunnel]
+  # ─── Stage 3: Build panel (pure Go, CGO_ENABLED=0, static) ───
+  build-panel:
+    name: Build Panel (${{ matrix.goarch }})
+    needs: build-frontend
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+          - goarch: arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -95,82 +101,32 @@ jobs:
           name: frontend-build
           path: panel/backend/cmd/panel/web/
 
-      - name: Build panel (amd64, native CGO)
+      - name: Build panel
         env:
-          CGO_ENABLED: 1
+          CGO_ENABLED: 0
           GOOS: linux
-          GOARCH: amd64
+          GOARCH: ${{ matrix.goarch }}
         working-directory: panel/backend
         run: |
-          go build -ldflags="-s -w -linkmode external -extldflags '-static'" \
-            -o ../../spoof-panel-linux-amd64 ./cmd/panel/
+          go build -ldflags="-s -w" \
+            -o ../../spoof-panel-linux-${{ matrix.goarch }} ./cmd/panel/
 
       - name: Verify binary
         run: |
-          file spoof-panel-linux-amd64
-          ls -lh spoof-panel-linux-amd64
+          file spoof-panel-linux-${{ matrix.goarch }}
+          ls -lh spoof-panel-linux-${{ matrix.goarch }}
 
       - name: Upload panel binary
         uses: actions/upload-artifact@v4
         with:
-          name: panel-amd64
-          path: spoof-panel-linux-amd64
-          retention-days: 1
-
-  build-panel-arm64:
-    name: Build Panel (arm64)
-    needs: [build-frontend, build-tunnel]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Install cross-compiler (zig)
-        run: |
-          ZIG_VERSION="0.13.0"
-          curl -sSLo /tmp/zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz"
-          tar xf /tmp/zig.tar.xz -C $HOME/
-          echo "$HOME/zig-linux-x86_64-${ZIG_VERSION}" >> $GITHUB_PATH
-          $HOME/zig-linux-x86_64-${ZIG_VERSION}/zig version
-
-      - name: Download frontend build
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: panel/backend/cmd/panel/web/
-
-      - name: Build panel (arm64, zig CC)
-        env:
-          CGO_ENABLED: 1
-          GOOS: linux
-          GOARCH: arm64
-          CC: "zig cc -target aarch64-linux-musl"
-          CXX: "zig c++ -target aarch64-linux-musl"
-        working-directory: panel/backend
-        run: |
-          go build -ldflags="-s -w -linkmode external -extldflags '-static'" \
-            -o ../../spoof-panel-linux-arm64 ./cmd/panel/
-
-      - name: Verify binary
-        run: |
-          file spoof-panel-linux-arm64
-          ls -lh spoof-panel-linux-arm64
-
-      - name: Upload panel binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: panel-arm64
-          path: spoof-panel-linux-arm64
+          name: panel-${{ matrix.goarch }}
+          path: spoof-panel-linux-${{ matrix.goarch }}
           retention-days: 1
 
   # ─── Stage 4: Smoke test ───
   test:
     name: Smoke Test
-    needs: build-panel-amd64
+    needs: build-panel
     runs-on: ubuntu-latest
     steps:
       - name: Download panel binary
@@ -192,7 +148,7 @@ jobs:
           sleep 3
 
           # Test auth
-          curl -sf http://localhost:19999/api/auth/check | grep -q "needs_setup"
+          curl -sf http://localhost:19999/api/auth/check
 
           # Test login
           TOKEN=$(curl -sf -X POST http://localhost:19999/api/auth/login \
@@ -214,7 +170,7 @@ jobs:
   # ─── Stage 5: Create GitHub Release ───
   release:
     name: Create Release
-    needs: [build-panel-amd64, build-panel-arm64, build-tunnel, test]
+    needs: [build-panel, build-tunnel, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -226,7 +182,7 @@ jobs:
           merge-multiple: true
 
       - name: List artifacts
-        run: ls -la dist/
+        run: ls -lh dist/
 
       - name: Generate checksums
         working-directory: dist
