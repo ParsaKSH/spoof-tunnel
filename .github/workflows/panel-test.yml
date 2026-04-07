@@ -1,0 +1,176 @@
+name: Panel CI
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - 'panel/**'
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'panel/**'
+
+jobs:
+  test-backend:
+    name: Backend (Go ${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.23']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Download dependencies
+        working-directory: panel/backend
+        run: go mod download
+
+      - name: Vet
+        working-directory: panel/backend
+        run: go vet ./...
+
+      - name: Build (smoke test)
+        working-directory: panel/backend
+        run: go build ./cmd/panel/
+
+  test-frontend:
+    name: Frontend (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['20']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        working-directory: panel/frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: panel/frontend
+        run: npm run lint || true
+
+      - name: Build
+        working-directory: panel/frontend
+        run: npm run build
+
+      - name: Check output
+        run: |
+          if [ ! -f panel/frontend/out/index.html ]; then
+            echo "Build failed: index.html not found"
+            exit 1
+          fi
+          echo "Frontend build size:"
+          du -sh panel/frontend/out/
+
+  integration:
+    name: Integration Test
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend
+        working-directory: panel/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Copy frontend → backend embed
+        run: |
+          rm -rf panel/backend/cmd/panel/web
+          cp -r panel/frontend/out panel/backend/cmd/panel/web
+
+      - name: Build panel binary
+        working-directory: panel/backend
+        run: go build -o /tmp/spoof-panel ./cmd/panel/
+
+      - name: Test setup mode
+        run: |
+          SPOOF_DATA_DIR=/tmp/panel-test /tmp/spoof-panel \
+            -setup-user testadmin \
+            -setup-pass testpass123 \
+            -setup-port 18888
+
+      - name: Start panel and test APIs
+        run: |
+          SPOOF_DATA_DIR=/tmp/panel-test /tmp/spoof-panel -port 18888 &
+          PANEL_PID=$!
+          sleep 3
+
+          # Health check
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18888/api/auth/check)
+          echo "Auth check: $STATUS"
+          [ "$STATUS" = "200" ] || exit 1
+
+          # Login
+          RESP=$(curl -s -X POST http://localhost:18888/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"testadmin","password":"testpass123"}')
+          echo "Login response: $RESP"
+          TOKEN=$(echo "$RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+          [ -n "$TOKEN" ] || exit 1
+          echo "Got token: ${TOKEN:0:20}..."
+
+          # Dashboard
+          DASH=$(curl -s http://localhost:18888/api/dashboard \
+            -H "Authorization: Bearer $TOKEN")
+          echo "Dashboard: $DASH"
+          echo "$DASH" | grep -q "tunnel_status" || exit 1
+
+          # System info
+          SYS=$(curl -s http://localhost:18888/api/system \
+            -H "Authorization: Bearer $TOKEN")
+          echo "System: $SYS"
+          echo "$SYS" | grep -q "hostname" || exit 1
+
+          # Inbounds CRUD
+          echo "--- Create inbound ---"
+          CREATE=$(curl -s -X POST http://localhost:18888/api/inbounds \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"type":"socks","listen":"127.0.0.1:1080","remark":"test"}')
+          echo "$CREATE"
+          INB_ID=$(echo "$CREATE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          [ -n "$INB_ID" ] || exit 1
+
+          echo "--- List inbounds ---"
+          LIST=$(curl -s http://localhost:18888/api/inbounds \
+            -H "Authorization: Bearer $TOKEN")
+          echo "$LIST"
+          echo "$LIST" | grep -q "socks" || exit 1
+
+          echo "--- Delete inbound ---"
+          curl -s -X DELETE "http://localhost:18888/api/inbounds/$INB_ID" \
+            -H "Authorization: Bearer $TOKEN"
+
+          # Frontend serving
+          HTML_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18888/)
+          echo "Frontend: $HTML_STATUS"
+          [ "$HTML_STATUS" = "200" ] || exit 1
+
+          CSS_TYPE=$(curl -s -I http://localhost:18888/_next/static/chunks/*.css 2>/dev/null | \
+            grep -i content-type | head -1 || echo "no-css")
+          echo "CSS content-type: $CSS_TYPE"
+
+          kill $PANEL_PID 2>/dev/null
+          echo "✓ All integration tests passed"

@@ -1,0 +1,266 @@
+name: Panel Release
+
+on:
+  push:
+    tags:
+      - 'panel-v*'
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.23'
+  NODE_VERSION: '20'
+
+jobs:
+  # ─── Stage 1: Build Next.js frontend ───
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install & Build
+        working-directory: panel/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Verify output
+        run: |
+          test -f panel/frontend/out/index.html
+          echo "Frontend build size: $(du -sh panel/frontend/out/ | cut -f1)"
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: panel/frontend/out/
+          retention-days: 1
+
+  # ─── Stage 2: Build spoof-tunnel binary (CGO_ENABLED=0) ───
+  build-tunnel:
+    name: Build Tunnel (${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+          - goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build spoof binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -ldflags="-s -w" -o spoof-linux-${{ matrix.goarch }} ./cmd/spoof/
+
+      - name: Upload tunnel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunnel-${{ matrix.goarch }}
+          path: spoof-linux-${{ matrix.goarch }}
+          retention-days: 1
+
+  # ─── Stage 3: Build panel binary (CGO_ENABLED=1 for SQLite) ───
+  build-panel-amd64:
+    name: Build Panel (amd64)
+    needs: [build-frontend, build-tunnel]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: panel/backend/cmd/panel/web/
+
+      - name: Build panel (amd64, native CGO)
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: amd64
+        working-directory: panel/backend
+        run: |
+          go build -ldflags="-s -w -linkmode external -extldflags '-static'" \
+            -o ../../spoof-panel-linux-amd64 ./cmd/panel/
+
+      - name: Verify binary
+        run: |
+          file spoof-panel-linux-amd64
+          ls -lh spoof-panel-linux-amd64
+
+      - name: Upload panel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-amd64
+          path: spoof-panel-linux-amd64
+          retention-days: 1
+
+  build-panel-arm64:
+    name: Build Panel (arm64)
+    needs: [build-frontend, build-tunnel]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install cross-compiler (zig)
+        run: |
+          ZIG_VERSION="0.13.0"
+          curl -sSLo /tmp/zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz"
+          tar xf /tmp/zig.tar.xz -C /usr/local/
+          ln -s /usr/local/zig-linux-x86_64-${ZIG_VERSION}/zig /usr/local/bin/zig
+          zig version
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: panel/backend/cmd/panel/web/
+
+      - name: Build panel (arm64, zig CC)
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: arm64
+          CC: "zig cc -target aarch64-linux-musl"
+          CXX: "zig c++ -target aarch64-linux-musl"
+        working-directory: panel/backend
+        run: |
+          go build -ldflags="-s -w -linkmode external -extldflags '-static'" \
+            -o ../../spoof-panel-linux-arm64 ./cmd/panel/
+
+      - name: Verify binary
+        run: |
+          file spoof-panel-linux-arm64
+          ls -lh spoof-panel-linux-arm64
+
+      - name: Upload panel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-arm64
+          path: spoof-panel-linux-arm64
+          retention-days: 1
+
+  # ─── Stage 4: Smoke test ───
+  test:
+    name: Smoke Test
+    needs: build-panel-amd64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download panel binary
+        uses: actions/download-artifact@v4
+        with:
+          name: panel-amd64
+
+      - name: Run setup test
+        run: |
+          chmod +x spoof-panel-linux-amd64
+          SPOOF_DATA_DIR=/tmp/test-panel ./spoof-panel-linux-amd64 \
+            -setup-user ci-test \
+            -setup-pass ci-pass-123 \
+            -setup-port 19999
+
+      - name: Run server test
+        run: |
+          SPOOF_DATA_DIR=/tmp/test-panel ./spoof-panel-linux-amd64 -port 19999 &
+          sleep 3
+
+          # Test auth
+          curl -sf http://localhost:19999/api/auth/check | grep -q "needs_setup"
+
+          # Test login
+          TOKEN=$(curl -sf -X POST http://localhost:19999/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"ci-test","password":"ci-pass-123"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+          [ -n "$TOKEN" ]
+
+          # Test dashboard
+          curl -sf http://localhost:19999/api/dashboard \
+            -H "Authorization: Bearer $TOKEN" | grep -q "tunnel_status"
+
+          # Test frontend
+          curl -sf http://localhost:19999/ | grep -q "Spoof Panel"
+
+          echo "✓ All smoke tests passed"
+          kill %1
+
+  # ─── Stage 5: Create GitHub Release ───
+  release:
+    name: Create Release
+    needs: [build-panel-amd64, build-panel-arm64, build-tunnel, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Generate checksums
+        working-directory: dist
+        run: |
+          sha256sum spoof-panel-* spoof-linux-* > checksums.txt
+          cat checksums.txt
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/panel-}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Spoof Panel ${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## Spoof Panel ${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+            ```bash
+            bash <(curl -Ls https://raw.githubusercontent.com/${{ github.repository }}/main/panel/install.sh)
+            ```
+
+            ### Downloads
+            | File | Platform |
+            |------|----------|
+            | `spoof-panel-linux-amd64` | Linux x86_64 |
+            | `spoof-panel-linux-arm64` | Linux ARM64 |
+            | `spoof-linux-amd64` | Tunnel binary (x86_64) |
+            | `spoof-linux-arm64` | Tunnel binary (ARM64) |
+
+            ### Changes
+          generate_release_notes: true
+          files: |
+            dist/spoof-panel-*
+            dist/spoof-linux-*
+            dist/checksums.txt

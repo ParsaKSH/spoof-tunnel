@@ -2,16 +2,20 @@ name: Test
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, dev]
+    paths-ignore:
+      - 'panel/**'
   pull_request:
-    branches: [main, master]
+    branches: [main, master, dev]
+    paths-ignore:
+      - 'panel/**'
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.21', '1.22']
+        go-version: ['1.22', '1.23']
     steps:
       - uses: actions/checkout@v4
 
