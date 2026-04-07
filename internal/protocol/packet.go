@@ -16,7 +16,10 @@ const (
 	PacketClose     byte = 0x06 // Connection close
 	PacketHandshake byte = 0x07 // Key exchange handshake
 	PacketAck       byte = 0x08 // Data acknowledgment (for reliable delivery)
-	PacketFEC       byte = 0x09 // FEC shard packet
+	PacketFEC         byte = 0x09 // FEC shard packet
+	PacketInitRelay   byte = 0x0A // Relay init (UDP relay session)
+	PacketInitForward byte = 0x0B // Forward init (TCP port forward session)
+	PacketDataUDP     byte = 0x0C // UDP datagram (preserves message boundaries)
 )
 
 // Header sizes
@@ -296,6 +299,12 @@ func TypeString(t byte) string {
 		return "ACK"
 	case PacketFEC:
 		return "FEC"
+	case PacketInitRelay:
+		return "INIT_RELAY"
+	case PacketInitForward:
+		return "INIT_FORWARD"
+	case PacketDataUDP:
+		return "DATA_UDP"
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", t)
 	}
@@ -307,5 +316,35 @@ func NewFECPacket(sessionID uint32, shardData []byte) *Packet {
 		SessionID: sessionID,
 		Type:      PacketFEC,
 		Payload:   shardData,
+	}
+}
+
+// NewInitRelayPacket creates an init packet for UDP relay sessions.
+// No payload needed — the server uses its own config for the forward address.
+func NewInitRelayPacket(sessionID uint32) *Packet {
+	return &Packet{
+		SessionID: sessionID,
+		Type:      PacketInitRelay,
+		Payload:   nil,
+	}
+}
+
+// NewInitForwardPacket creates an init packet for TCP port-forward sessions.
+// Payload contains the target address (e.g. "10.0.0.1:22").
+func NewInitForwardPacket(sessionID uint32, target string) *Packet {
+	return &Packet{
+		SessionID: sessionID,
+		Type:      PacketInitForward,
+		Payload:   []byte(target),
+	}
+}
+
+// NewDataUDPPacket creates a UDP datagram packet. Unlike PacketData (stream),
+// each PacketDataUDP preserves message boundaries for UDP relay.
+func NewDataUDPPacket(sessionID uint32, data []byte) *Packet {
+	return &Packet{
+		SessionID: sessionID,
+		Type:      PacketDataUDP,
+		Payload:   data,
 	}
 }

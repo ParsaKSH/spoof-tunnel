@@ -1,26 +1,35 @@
 {
   "mode": "client",
   "transport": {
-    "type": "udp",
-    "icmp_mode": "echo",
-    "protocol_number": 0
-  },
-  "listen": {
-    "address": "127.0.0.1",
-    "port": 1080
+    "type": "syn_udp"
   },
   "server": {
-    "address": "1.2.3.4",
+    "address": "SERVER_IP",
     "port": 8080
   },
   "spoof": {
-    "source_ip": "5.6.7.8",
-    "peer_spoof_ip": "9.10.11.12"
+    "source_ip": "SPOOF_SOURCE_IP",
+    "peer_spoof_ip": "SERVER_SPOOF_IP"
   },
   "crypto": {
     "private_key": "",
     "peer_public_key": ""
   },
+  "inbounds": [
+    {
+      "type": "socks",
+      "listen": "127.0.0.1:1080"
+    },
+    {
+      "type": "relay",
+      "listen": "127.0.0.1:5000"
+    },
+    {
+      "type": "forward",
+      "listen": "0.0.0.0:2222",
+      "target": "10.0.0.1:22"
+    }
+  ],
   "performance": {
     "buffer_size": 65535,
     "mtu": 1400,
@@ -29,6 +38,10 @@
     "read_buffer": 4194304,
     "write_buffer": 4194304
   },
+<<<<<<< dev
+  "logging": {
+    "level": "info"
+=======
   "fec": {
     "enabled": false,
     "data_shards": 10,
@@ -37,5 +50,6 @@
   "logging": {
     "level": "info",
     "file": ""
+>>>>>>> main
   }
 }

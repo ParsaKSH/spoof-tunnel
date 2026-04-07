@@ -104,6 +104,8 @@ func NewServer(cfg *config.Config, cipher *crypto.Cipher) (*Server, error) {
 		trans, err = transport.NewICMPTransport(transportCfg, mode)
 	case config.TransportRAW:
 		trans, err = transport.NewRawTransport(transportCfg)
+	case config.TransportSynUDP:
+		trans, err = transport.NewSynUDPTransport(transportCfg)
 	default:
 		trans, err = transport.NewUDPTransport(transportCfg)
 	}
@@ -168,6 +170,11 @@ func (s *Server) Start() error {
 
 	// Start session cleanup
 	go s.cleanupLoop()
+
+	// Start direct relay server (zero-overhead bypass) if configured
+	if s.config.RelayPort > 0 && s.config.RelayForward != "" {
+		go s.startDirectRelayServer()
+	}
 
 	// Main receive loop
 	return s.receiveLoop()
@@ -237,8 +244,17 @@ func (s *Server) handlePacket(pkt *protocol.Packet, clientIP net.IP, clientPort 
 	case protocol.PacketInit:
 		s.handleInit(pkt, clientIP, clientPort)
 
+	case protocol.PacketInitRelay:
+		s.handleInitRelay(pkt, clientIP, clientPort)
+
+	case protocol.PacketInitForward:
+		s.handleInitForward(pkt, clientIP, clientPort)
+
 	case protocol.PacketData:
 		s.handleData(pkt)
+
+	case protocol.PacketDataUDP:
+		s.handleDataUDP(pkt)
 
 	case protocol.PacketClose:
 		s.handleClose(pkt)

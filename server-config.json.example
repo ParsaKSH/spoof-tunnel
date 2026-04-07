@@ -1,9 +1,7 @@
 {
   "mode": "server",
   "transport": {
-    "type": "icmp",
-    "icmp_mode": "echo",
-    "protocol_number": 0
+    "type": "syn_udp"
   },
   "listen": {
     "address": "0.0.0.0",
@@ -11,16 +9,14 @@
   },
   "spoof": {
     "source_ip": "YOUR_SPOOF_SOURCE_IP",
-    "source_ipv6": "",
     "peer_spoof_ip": "EXPECTED_CLIENT_SPOOF_IP",
-    "peer_spoof_ipv6": "",
-    "client_real_ip": "CLIENT_REAL_IP_FOR_RESPONSES",
-    "client_real_ipv6": ""
+    "client_real_ip": "CLIENT_REAL_IP"
   },
   "crypto": {
-    "private_key": "YOUR_PRIVATE_KEY_BASE64",
-    "peer_public_key": "CLIENT_PUBLIC_KEY_BASE64"
+    "private_key": "",
+    "peer_public_key": ""
   },
+  "relay_forward": "127.0.0.1:51822",
   "performance": {
     "buffer_size": 131072,
     "mtu": 1400,
@@ -36,18 +32,12 @@
     "max_retries": 5,
     "ack_interval_ms": 50
   },
-  "fec": {
-    "enabled": true,
-    "data_shards": 10,
-    "parity_shards": 3
-  },
   "keepalive": {
     "enabled": true,
     "interval_seconds": 30,
     "timeout_seconds": 120
   },
   "logging": {
-    "level": "info",
-    "file": ""
+    "level": "info"
   }
 }

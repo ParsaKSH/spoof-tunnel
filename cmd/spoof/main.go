@@ -127,12 +127,24 @@ func main() {
 }
 
 func runClient(cfg *config.Config, cipher *crypto.Cipher, sigCh chan os.Signal) {
-	fmt.Printf("%-30s %s\n", "SOCKS5 proxy:", cfg.GetListenAddr())
 	fmt.Printf("%-30s %s\n", "Server:", cfg.GetServerAddr())
 	fmt.Printf("%-30s %s\n", "Spoof source IP:", cfg.Spoof.SourceIP)
 	if cfg.Spoof.PeerSpoofIP != "" {
 		fmt.Printf("%-30s %s\n", "Expected server spoof IP:", cfg.Spoof.PeerSpoofIP)
 	}
+	fmt.Println()
+	for _, inb := range cfg.Inbounds {
+		switch inb.Type {
+		case config.InboundSocks:
+			fmt.Printf("%-30s %s\n", "Inbound [socks]:", inb.Listen)
+		case config.InboundRelay:
+			fmt.Printf("%-30s %s\n", "Inbound [relay]:", inb.Listen)
+		case config.InboundForward:
+			fmt.Printf("%-30s %s → %s\n", "Inbound [forward]:", inb.Listen, inb.Target)
+		}
+	}
+	fmt.Println()
+	log.Printf(blue("Starting client mode..."))
 
 	fmt.Println()
 	log.Printf(blue("Starting client mode..."))

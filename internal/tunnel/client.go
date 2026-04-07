@@ -117,6 +117,8 @@ func NewClient(cfg *config.Config, cipher *crypto.Cipher) (*Client, error) {
 		trans, err = transport.NewICMPTransport(transportCfg, mode)
 	case config.TransportRAW:
 		trans, err = transport.NewRawTransport(transportCfg)
+	case config.TransportSynUDP:
+		trans, err = transport.NewSynUDPTransport(transportCfg)
 	default:
 		trans, err = transport.NewUDPTransport(transportCfg)
 	}
@@ -161,14 +163,6 @@ func NewClient(cfg *config.Config, cipher *crypto.Cipher) (*Client, error) {
 
 // Start starts the client
 func (c *Client) Start() error {
-	// Create SOCKS5 server with StreamHandler for direct TCP access
-	// This allows downloads to bypass channel overhead for maximum throughput
-	socksServer, err := socks.NewStreamServer(c.config.GetListenAddr(), c.handleStream)
-	if err != nil {
-		return fmt.Errorf("create socks server: %w", err)
-	}
-	c.socksServer = socksServer
-
 	c.running.Store(true)
 
 	// Start receiver goroutine
@@ -180,11 +174,45 @@ func (c *Client) Start() error {
 	// Start keepalive
 	go c.keepaliveLoop()
 
-	// Start SOCKS5 server
-	log.Printf("SOCKS5 proxy listening on %s", c.config.GetListenAddr())
 	log.Printf("Tunneling to %s:%d via %s", c.serverIP, c.serverPort, c.config.Transport.Type)
 
-	return c.socksServer.Serve()
+	// Start all inbounds
+	errCh := make(chan error, len(c.config.Inbounds))
+	for _, inb := range c.config.Inbounds {
+		switch inb.Type {
+		case config.InboundSocks:
+			go func(listen string) {
+				log.Printf("[inbound] SOCKS5 proxy on %s", listen)
+				socksServer, err := socks.NewStreamServer(listen, c.handleStream)
+				if err != nil {
+					errCh <- fmt.Errorf("socks %s: %w", listen, err)
+					return
+				}
+				c.socksServer = socksServer
+				errCh <- socksServer.Serve()
+			}(inb.Listen)
+
+		case config.InboundRelay:
+			go func(listen string, remotePort int) {
+				if remotePort > 0 {
+					log.Printf("[inbound] UDP relay on %s → direct bypass (port %d)", listen, remotePort)
+					errCh <- c.startDirectRelay(listen, remotePort)
+				} else {
+					log.Printf("[inbound] UDP relay on %s (tunneled)", listen)
+					errCh <- c.startRelayInbound(listen)
+				}
+			}(inb.Listen, inb.RemotePort)
+
+		case config.InboundForward:
+			go func(listen, target string) {
+				log.Printf("[inbound] TCP forward on %s → %s", listen, target)
+				errCh <- c.startForwardInbound(listen, target)
+			}(inb.Listen, inb.Target)
+		}
+	}
+
+	// Wait for first error
+	return <-errCh
 }
 
 // Stop stops the client

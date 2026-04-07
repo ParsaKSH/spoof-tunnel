@@ -20,9 +20,10 @@ const (
 type TransportType string
 
 const (
-	TransportUDP  TransportType = "udp"
-	TransportICMP TransportType = "icmp"
-	TransportRAW  TransportType = "raw"
+	TransportUDP    TransportType = "udp"
+	TransportICMP   TransportType = "icmp"
+	TransportRAW    TransportType = "raw"
+	TransportSynUDP TransportType = "syn_udp"
 )
 
 // ICMPMode represents the ICMP packet type to use
@@ -43,19 +44,39 @@ const (
 	LogError LogLevel = "error"
 )
 
+// InboundType represents the type of inbound listener
+type InboundType string
+
+const (
+	InboundSocks   InboundType = "socks"
+	InboundRelay   InboundType = "relay"
+	InboundForward InboundType = "forward"
+)
+
+// InboundConfig configures a single inbound listener
+type InboundConfig struct {
+	Type       InboundType `json:"type"`
+	Listen     string      `json:"listen"`
+	Target     string      `json:"target,omitempty"`      // forward mode: remote target address
+	RemotePort int         `json:"remote_port,omitempty"` // relay mode: dedicated server port (direct bypass)
+}
+
 // Config holds all configuration for the tunnel
 type Config struct {
-	Mode        Mode              `json:"mode"`
-	Transport   TransportConfig   `json:"transport"`
-	Listen      ListenConfig      `json:"listen"`
-	Server      ServerConfig      `json:"server"`
-	Spoof       SpoofConfig       `json:"spoof"`
-	Crypto      CryptoConfig      `json:"crypto"`
-	Performance PerformanceConfig `json:"performance"`
-	Reliability ReliabilityConfig `json:"reliability"`
-	FEC         FECConfig         `json:"fec"`
-	Keepalive   KeepaliveConfig   `json:"keepalive"`
-	Logging     LoggingConfig     `json:"logging"`
+	Mode         Mode              `json:"mode"`
+	Transport    TransportConfig   `json:"transport"`
+	Listen       ListenConfig      `json:"listen"`       // deprecated: use inbounds
+	Server       ServerConfig      `json:"server"`
+	Spoof        SpoofConfig       `json:"spoof"`
+	Crypto       CryptoConfig      `json:"crypto"`
+	Performance  PerformanceConfig `json:"performance"`
+	Reliability  ReliabilityConfig `json:"reliability"`
+	FEC          FECConfig         `json:"fec"`
+	Keepalive    KeepaliveConfig   `json:"keepalive"`
+	Logging      LoggingConfig     `json:"logging"`
+	Inbounds     []InboundConfig   `json:"inbounds"`
+	RelayForward string            `json:"relay_forward,omitempty"` // server: where to forward relay UDP
+	RelayPort    int               `json:"relay_port,omitempty"`    // server: dedicated port for direct relay
 }
 
 // TransportConfig configures the transport layer
@@ -237,6 +258,14 @@ func (c *Config) setDefaults() error {
 		c.Logging.Level = LogInfo
 	}
 
+	// Backward compat: if no inbounds defined, create one from listen field
+	if len(c.Inbounds) == 0 && c.Mode == ModeClient {
+		c.Inbounds = []InboundConfig{{
+			Type:   InboundSocks,
+			Listen: c.GetListenAddr(),
+		}}
+	}
+
 	return nil
 }
 
@@ -250,8 +279,8 @@ func (c *Config) Validate() error {
 	}
 
 	// Transport validation
-	if c.Transport.Type != TransportUDP && c.Transport.Type != TransportICMP && c.Transport.Type != TransportRAW {
-		errs = append(errs, fmt.Sprintf("invalid transport type: %s (must be 'udp', 'icmp', or 'raw')", c.Transport.Type))
+	if c.Transport.Type != TransportUDP && c.Transport.Type != TransportICMP && c.Transport.Type != TransportRAW && c.Transport.Type != TransportSynUDP {
+		errs = append(errs, fmt.Sprintf("invalid transport type: %s (must be 'udp', 'icmp', 'raw', or 'syn_udp')", c.Transport.Type))
 	}
 	if c.Transport.Type == TransportICMP {
 		if c.Transport.ICMPMode != ICMPModeEcho && c.Transport.ICMPMode != ICMPModeReply {
