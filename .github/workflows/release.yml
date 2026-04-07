@@ -140,9 +140,9 @@ jobs:
         run: |
           ZIG_VERSION="0.13.0"
           curl -sSLo /tmp/zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz"
-          tar xf /tmp/zig.tar.xz -C /usr/local/
-          ln -s /usr/local/zig-linux-x86_64-${ZIG_VERSION}/zig /usr/local/bin/zig
-          zig version
+          tar xf /tmp/zig.tar.xz -C $HOME/
+          echo "$HOME/zig-linux-x86_64-${ZIG_VERSION}" >> $GITHUB_PATH
+          $HOME/zig-linux-x86_64-${ZIG_VERSION}/zig version
 
       - name: Download frontend build
         uses: actions/download-artifact@v4
