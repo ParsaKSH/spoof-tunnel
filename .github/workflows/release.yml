@@ -9,35 +9,30 @@ on:
 permissions:
   contents: write
 
+env:
+  GO_VERSION: '1.23'
+  NODE_VERSION: '20'
+
 jobs:
-  build:
+  # ─── Build spoof-tunnel (CGO_ENABLED=0, all platforms) ───
+  build-tunnel:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux
           - goos: linux
             goarch: amd64
             suffix: ''
           - goos: linux
             goarch: arm64
             suffix: ''
-          # Windows
-#          - goos: windows
- #           goarch: amd64
-  #          suffix: '.exe'
-   #       - goos: windows
-    #        goarch: arm64
-     #       suffix: '.exe'
-          # FreeBSD
           - goos: freebsd
             goarch: amd64
             suffix: ''
           - goos: freebsd
             goarch: arm64
             suffix: ''
-          # OpenBSD
           - goos: openbsd
             goarch: amd64
             suffix: ''
@@ -51,7 +46,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Build
         env:
@@ -68,9 +63,115 @@ jobs:
         with:
           name: spoof-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.BINARY_NAME }}
+          retention-days: 1
 
+  # ─── Build panel frontend ───
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install & Build
+        working-directory: panel/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: panel/frontend/out/
+          retention-days: 1
+
+  # ─── Build panel (amd64, native CGO for SQLite) ───
+  build-panel-amd64:
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: panel/backend/cmd/panel/web/
+
+      - name: Build panel (amd64)
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: amd64
+        working-directory: panel/backend
+        run: |
+          go build -ldflags="-s -w" \
+            -o ../../spoof-panel-linux-amd64 ./cmd/panel/
+
+      - name: Upload panel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-amd64
+          path: spoof-panel-linux-amd64
+          retention-days: 1
+
+  # ─── Build panel (arm64, zig cross-compiler for CGO) ───
+  build-panel-arm64:
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install zig (cross-compiler)
+        run: |
+          ZIG_VERSION="0.13.0"
+          curl -sSLo /tmp/zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz"
+          tar xf /tmp/zig.tar.xz -C /usr/local/
+          ln -s /usr/local/zig-linux-x86_64-${ZIG_VERSION}/zig /usr/local/bin/zig
+          zig version
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: panel/backend/cmd/panel/web/
+
+      - name: Build panel (arm64)
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: arm64
+          CC: "zig cc -target aarch64-linux-musl"
+          CXX: "zig c++ -target aarch64-linux-musl"
+        working-directory: panel/backend
+        run: |
+          go build -ldflags="-s -w -linkmode external -extldflags '-static'" \
+            -o ../../spoof-panel-linux-arm64 ./cmd/panel/
+
+      - name: Upload panel binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-arm64
+          path: spoof-panel-linux-arm64
+          retention-days: 1
+
+  # ─── Create Release (tunnel + panel) ───
   release:
-    needs: build
+    needs: [build-tunnel, build-panel-amd64, build-panel-arm64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,9 +182,14 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: List artifacts
+        run: ls -lh dist/
+
       - name: Generate checksums
         working-directory: dist
-        run: sha256sum spoof-* > checksums.txt
+        run: |
+          sha256sum spoof-* spoof-panel-* 2>/dev/null > checksums.txt || true
+          cat checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
