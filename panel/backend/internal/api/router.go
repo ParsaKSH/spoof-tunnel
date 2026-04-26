@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ParsaKSH/spooftunnel/panel/internal/auth"
-	"github.com/ParsaKSH/spooftunnel/panel/internal/manager"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/auth"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/manager"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -64,12 +64,6 @@ func (s *Server) setupRoutes() {
 			// Dashboard
 			protected.GET("/dashboard", s.handleDashboard)
 			protected.GET("/system", s.handleSystem)
-
-			// Inbounds
-			protected.GET("/inbounds", s.handleListInbounds)
-			protected.POST("/inbounds", s.handleCreateInbound)
-			protected.PUT("/inbounds/:id", s.handleUpdateInbound)
-			protected.DELETE("/inbounds/:id", s.handleDeleteInbound)
 
 			// Config
 			protected.GET("/config", s.handleGetConfig)

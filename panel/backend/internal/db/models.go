@@ -18,40 +18,29 @@ type User struct {
 
 // ServerConfig holds the tunnel configuration (single row)
 type ServerConfig struct {
-	ID                 uint      `gorm:"primarykey" json:"id"`
-	Mode               string    `gorm:"default:client" json:"mode"`
-	TransportType      string    `gorm:"default:syn_udp" json:"transport_type"`
-	ServerAddress      string    `json:"server_address"`
-	ServerPort         int       `gorm:"default:8080" json:"server_port"`
-	ListenPort         int       `gorm:"default:8080" json:"listen_port"`
-	SpoofSourceIP      string    `json:"spoof_source_ip"`
-	SpoofPeerIP        string    `json:"spoof_peer_ip"`
-	ClientRealIP       string    `json:"client_real_ip"`
-	PrivateKey         string    `json:"private_key"`
-	PeerPublicKey      string    `json:"peer_public_key"`
-	RelayForward       string    `json:"relay_forward"`
-	RelayPort          int       `json:"relay_port"`
-	MTU                int       `gorm:"default:1400" json:"mtu"`
-	BufferSize         int       `gorm:"default:65535" json:"buffer_size"`
-	SessionTimeout     int       `gorm:"default:600" json:"session_timeout"`
-	Workers            int       `gorm:"default:4" json:"workers"`
-	ReliabilityEnabled bool      `gorm:"default:false" json:"reliability_enabled"`
-	FECEnabled         bool      `gorm:"default:false" json:"fec_enabled"`
-	LogLevel           string    `gorm:"default:info" json:"log_level"`
-	UpdatedAt          time.Time `json:"updated_at"`
-}
+	ID            uint      `gorm:"primarykey" json:"id"`
+	Mode          string    `gorm:"default:local" json:"mode"`               // "local" or "remote"
+	SendTransport string    `gorm:"default:tcp" json:"send_transport"`       // "tcp", "udp", "icmp", "icmpv6"
+	RecvTransport string    `gorm:"default:udp" json:"recv_transport"`       // "tcp", "udp", "icmp", "icmpv6"
 
-// Inbound represents a tunnel inbound configuration
-type Inbound struct {
-	ID         uint      `gorm:"primarykey" json:"id"`
-	Type       string    `gorm:"not null" json:"type"` // socks, relay, forward
-	Listen     string    `gorm:"not null" json:"listen"`
-	Target     string    `json:"target,omitempty"`
-	RemotePort int       `json:"remote_port,omitempty"`
-	Enabled    bool      `gorm:"default:true" json:"enabled"`
-	Remark     string    `json:"remark"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	// Local mode
+	ListenAddr    string    `gorm:"default:127.0.0.1:5000" json:"listen_addr"`
+	RemoteAddr    string    `json:"remote_addr"`
+	RemotePort    int       `gorm:"default:8090" json:"remote_port"`
+	RecvPort      int       `gorm:"default:5001" json:"recv_port"`
+
+	// Remote mode
+	ListenPort    int       `gorm:"default:8090" json:"listen_port"`
+	ForwardAddr   string    `gorm:"default:127.0.0.1:51820" json:"forward_addr"`
+	ClientIP      string    `json:"client_ip"`
+	ClientPort    int       `gorm:"default:5001" json:"client_port"`
+
+	// Spoof
+	SpoofIP       string    `json:"spoof_ip"`
+	SpoofPort     int       `gorm:"default:443" json:"spoof_port"`
+	PeerSpoofIP   string    `json:"peer_spoof_ip"`
+
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // TrafficStat stores traffic snapshots
@@ -79,7 +68,6 @@ func InitDB(dbPath string) (*gorm.DB, error) {
 	if err := db.AutoMigrate(
 		&User{},
 		&ServerConfig{},
-		&Inbound{},
 		&TrafficStat{},
 		&Setting{},
 	); err != nil {
@@ -92,15 +80,16 @@ func InitDB(dbPath string) (*gorm.DB, error) {
 	if count == 0 {
 		db.Create(&ServerConfig{
 			ID:            1,
-			Mode:          "client",
-			TransportType: "syn_udp",
-			ServerPort:    8080,
-			ListenPort:    8080,
-			MTU:           1400,
-			BufferSize:    65535,
-			SessionTimeout: 600,
-			Workers:       4,
-			LogLevel:      "info",
+			Mode:          "local",
+			SendTransport: "tcp",
+			RecvTransport: "udp",
+			ListenAddr:    "127.0.0.1:5000",
+			RemotePort:    8090,
+			RecvPort:      5001,
+			ListenPort:    8090,
+			ForwardAddr:   "127.0.0.1:51820",
+			ClientPort:    5001,
+			SpoofPort:     443,
 		})
 	}
 

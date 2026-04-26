@@ -11,7 +11,25 @@ on:
       - 'panel/**'
 
 jobs:
-  test:
+  test-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Test
+        working-directory: rust
+        run: cargo test
+
+  test-go:
+    needs: test-rust
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -19,19 +37,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Build Rust library
+        working-directory: rust
+        run: cargo build --release
+
       - name: Set up Go ${{ matrix.go-version }}
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
 
-      - name: Install libpcap
-        run: sudo apt-get update && sudo apt-get install -y libpcap-dev
-
       - name: Download dependencies
         run: go mod download
 
       - name: Vet
+        env:
+          CGO_ENABLED: 1
         run: go vet ./...
 
-      - name: Test
-        run: go test -v -race -count=1 ./...
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+        run: go build -o spoof ./cmd/spoof/

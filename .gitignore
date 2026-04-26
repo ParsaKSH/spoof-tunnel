@@ -35,3 +35,6 @@ go.work.sum
 client-config.json
 server-config.json
 spoof
+
+# Rust build artifacts
+rust/target/

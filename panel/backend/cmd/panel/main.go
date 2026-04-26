@@ -15,10 +15,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/ParsaKSH/spooftunnel/panel/internal/api"
-	"github.com/ParsaKSH/spooftunnel/panel/internal/auth"
-	"github.com/ParsaKSH/spooftunnel/panel/internal/db"
-	"github.com/ParsaKSH/spooftunnel/panel/internal/manager"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/api"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/auth"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/db"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/manager"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

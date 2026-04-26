@@ -5,11 +5,10 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"strconv"
 	"time"
 
-	"github.com/ParsaKSH/spooftunnel/panel/internal/auth"
-	"github.com/ParsaKSH/spooftunnel/panel/internal/db"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/auth"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/db"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -104,14 +103,10 @@ func (s *Server) handleDashboard(c *gin.Context) {
 	status, errMsg := s.manager.Status()
 	uptime := s.manager.Uptime()
 
-	var inboundCount int64
-	s.db.Model(&db.Inbound{}).Where("enabled = ?", true).Count(&inboundCount)
-
 	c.JSON(http.StatusOK, gin.H{
 		"tunnel_status": status,
 		"tunnel_error":  errMsg,
 		"uptime":        uptime.Seconds(),
-		"inbounds":      inboundCount,
 	})
 }
 
@@ -130,57 +125,6 @@ func (s *Server) handleSystem(c *gin.Context) {
 		"memory_mb":   m.Alloc / 1024 / 1024,
 		"go_version":  runtime.Version(),
 	})
-}
-
-// ── Inbound Handlers ──
-
-func (s *Server) handleListInbounds(c *gin.Context) {
-	var inbounds []db.Inbound
-	s.db.Order("id asc").Find(&inbounds)
-	c.JSON(http.StatusOK, inbounds)
-}
-
-func (s *Server) handleCreateInbound(c *gin.Context) {
-	var inbound db.Inbound
-	if err := c.ShouldBindJSON(&inbound); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if inbound.Type != "socks" && inbound.Type != "relay" && inbound.Type != "forward" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "type must be socks, relay, or forward"})
-		return
-	}
-
-	if err := s.db.Create(&inbound).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, inbound)
-}
-
-func (s *Server) handleUpdateInbound(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	var inbound db.Inbound
-	if err := s.db.First(&inbound, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-		return
-	}
-
-	if err := c.ShouldBindJSON(&inbound); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	s.db.Save(&inbound)
-	c.JSON(http.StatusOK, inbound)
-}
-
-func (s *Server) handleDeleteInbound(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	s.db.Delete(&db.Inbound{}, id)
-	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // ── Config Handlers ──

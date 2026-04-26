@@ -1,43 +1,10 @@
 {
-  "mode": "server",
-  "transport": {
-    "type": "syn_udp"
-  },
-  "listen": {
-    "address": "0.0.0.0",
-    "port": 8080
-  },
-  "spoof": {
-    "source_ip": "YOUR_SPOOF_SOURCE_IP",
-    "peer_spoof_ip": "EXPECTED_CLIENT_SPOOF_IP",
-    "client_real_ip": "CLIENT_REAL_IP"
-  },
-  "crypto": {
-    "private_key": "",
-    "peer_public_key": ""
-  },
-  "relay_forward": "127.0.0.1:51822",
-  "performance": {
-    "buffer_size": 131072,
-    "mtu": 1400,
-    "session_timeout": 600,
-    "workers": 16,
-    "read_buffer": 16777216,
-    "write_buffer": 16777216
-  },
-  "reliability": {
-    "enabled": true,
-    "window_size": 128,
-    "retransmit_timeout_ms": 300,
-    "max_retries": 5,
-    "ack_interval_ms": 50
-  },
-  "keepalive": {
-    "enabled": true,
-    "interval_seconds": 30,
-    "timeout_seconds": 120
-  },
-  "logging": {
-    "level": "info"
-  }
+    "mode": "remote",
+    "listen_port": 8090,
+    "forward": "[IP_ADDRESS]",
+    "client_ip": "[IP_ADDRESS]",
+    "client_port": 5001,
+    "spoof_ip": "[IP_ADDRESS]", (or "spoof_ip_file": "/path/to/ips.txt")
+    "spoof_port": 8090,
+    "peer_spoof_ip": "[IP_ADDRESS]"
 }

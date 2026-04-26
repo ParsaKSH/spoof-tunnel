@@ -14,28 +14,66 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  # ─── Build spoof-tunnel (CGO_ENABLED=0, all platforms) ───
+  # ─── Test Rust ───
+  test-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Rust test
+        working-directory: rust
+        run: cargo test
+
+  # ─── Build spoof-tunnel (CGO_ENABLED=1, Rust + Go, Linux only) ───
   build-tunnel:
+    needs: test-rust
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: freebsd
-            goarch: amd64
-          - goos: freebsd
-            goarch: arm64
-          - goos: openbsd
-            goarch: amd64
-          - goos: openbsd
-            goarch: arm64
+          - goarch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+            cc: gcc
+          - goarch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+            cc: aarch64-linux-gnu-gcc
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Install cross-compilation tools
+        if: matrix.goarch == 'arm64'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build Rust library
+        working-directory: rust
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --target ${{ matrix.rust_target }}
+
+      - name: Copy Rust library to expected path
+        run: |
+          mkdir -p rust/target/release
+          cp rust/target/${{ matrix.rust_target }}/release/libspoof_transport.a rust/target/release/
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -44,18 +82,19 @@ jobs:
 
       - name: Build
         env:
-          CGO_ENABLED: 0
-          GOOS: ${{ matrix.goos }}
+          CGO_ENABLED: 1
+          GOOS: linux
           GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc }}
         run: |
-          BINARY_NAME="spoof-${{ matrix.goos }}-${{ matrix.goarch }}"
+          BINARY_NAME="spoof-linux-${{ matrix.goarch }}"
           go build -ldflags="-s -w" -o "${BINARY_NAME}" ./cmd/spoof/
           echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spoof-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: spoof-linux-${{ matrix.goarch }}
           path: ${{ env.BINARY_NAME }}
           retention-days: 1
 
