@@ -6,7 +6,6 @@ interface DashData {
   tunnel_status: string;
   tunnel_error: string;
   uptime: number;
-  inbounds: number;
 }
 
 interface SysData {
@@ -92,12 +91,12 @@ export default function DashboardPage() {
           <span style={{ fontSize: 28, fontWeight: 700 }}>{formatUptime(dash?.uptime || 0)}</span>
         </div>
 
-        {/* Inbounds */}
+        {/* Goroutines */}
         <div className="glass-card">
           <span style={{ color: "var(--text-secondary)", fontSize: 13, textTransform: "uppercase", fontWeight: 600, display: "block", marginBottom: 12 }}>
-            🔌 Active Inbounds
+            ⚡ Goroutines
           </span>
-          <span style={{ fontSize: 28, fontWeight: 700 }}>{dash?.inbounds || 0}</span>
+          <span style={{ fontSize: 28, fontWeight: 700 }}>{sys?.goroutines || 0}</span>
         </div>
 
         {/* Memory */}

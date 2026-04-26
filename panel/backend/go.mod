@@ -1,4 +1,4 @@
-module github.com/ParsaKSH/spooftunnel/panel
+module github.com/ParsaKSH/spoof-tunnel/panel
 
 go 1.23
 

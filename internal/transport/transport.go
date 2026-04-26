@@ -1,65 +1,38 @@
 package transport
 
-import (
-	"net"
-)
+import "net"
 
-// Transport is the interface for sending and receiving spoofed packets
-type Transport interface {
-	// Send sends a packet with spoofed source IP
+// Sender sends spoofed packets over the wire.
+type Sender interface {
 	Send(payload []byte, dstIP net.IP, dstPort uint16) error
-
-	// Receive receives a packet, returns payload, source IP and port
-	Receive() (payload []byte, srcIP net.IP, srcPort uint16, err error)
-
-	// Close closes the transport
 	Close() error
-
-	// LocalPort returns the local port being used
-	LocalPort() uint16
-
-	// SetReadBuffer sets the read buffer size
-	SetReadBuffer(size int) error
-
-	// SetWriteBuffer sets the write buffer size
-	SetWriteBuffer(size int) error
 }
 
-// Config holds transport configuration
-type Config struct {
-	// SourceIP is the IP to use as source when sending packets
-	SourceIP net.IP
-
-	// SourceIPv6 is the IPv6 to use as source when sending packets
-	SourceIPv6 net.IP
-
-	// ListenPort is the port to listen on for incoming packets
-	ListenPort uint16
-
-	// PeerSpoofIP is the expected source IP of incoming packets from peer
-	PeerSpoofIP net.IP
-
-	// PeerSpoofIPv6 is the expected source IPv6 of incoming packets from peer
-	PeerSpoofIPv6 net.IP
-
-	// BufferSize is the size of read/write buffers
-	BufferSize int
-
-	// MTU is the maximum transmission unit
-	MTU int
-
-	// ProtocolNumber is the custom IP protocol number (1-255)
-	// Used for raw transport type
-	ProtocolNumber int
+// Receiver listens for incoming spoofed packets.
+type Receiver interface {
+	Receive() (payload []byte, srcIP net.IP, srcPort uint16, err error)
+	Close() error
 }
 
-// Validate validates the transport config
-func (c *Config) Validate() error {
-	if c.SourceIP == nil && c.SourceIPv6 == nil {
+// SenderConfig holds config shared by all senders.
+type SenderConfig struct {
+	SourceIP   net.IP   // Spoofed source address (single IP, used if SourceIPs is empty)
+	SourceIPs  []net.IP // Multiple spoofed source addresses for round-robin
+	SourcePort uint16   // Spoofed source port
+	MTU        int      // Maximum transmission unit (IP payload)
+}
+
+// ReceiverConfig holds config shared by all receivers.
+type ReceiverConfig struct {
+	ListenPort  uint16 // Port to filter incoming packets on
+	PeerSpoofIP net.IP // Expected source IP for filtering (nil = accept all)
+	BufferSize  int    // SO_RCVBUF size
+}
+
+// Validate checks the sender config.
+func (c *SenderConfig) Validate() error {
+	if c.SourceIP == nil && len(c.SourceIPs) == 0 {
 		return ErrNoSourceIP
-	}
-	if c.BufferSize == 0 {
-		c.BufferSize = 65535
 	}
 	if c.MTU == 0 {
 		c.MTU = 1400
@@ -67,7 +40,10 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// IsIPv6 returns true if using IPv6
-func (c *Config) IsIPv6() bool {
-	return c.SourceIP == nil || c.SourceIP.To4() == nil
+// GetIPList returns the flat list of IPs to use (merges single + multi).
+func (c *SenderConfig) GetIPList() []net.IP {
+	if len(c.SourceIPs) > 0 {
+		return c.SourceIPs
+	}
+	return []net.IP{c.SourceIP}
 }

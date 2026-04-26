@@ -1,13 +1,28 @@
 package transport
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrNoSourceIP       = errors.New("no source IP configured")
-	ErrPacketTooLarge   = errors.New("packet too large")
-	ErrInvalidPacket    = errors.New("invalid packet")
-	ErrRawSocketFailed  = errors.New("raw socket creation failed (need root/CAP_NET_RAW)")
-	ErrNotIPv4          = errors.New("not an IPv4 address")
-	ErrNotIPv6          = errors.New("not an IPv6 address")
 	ErrConnectionClosed = errors.New("connection closed")
+	ErrPacketTooLarge   = errors.New("packet exceeds MTU")
+	ErrInvalidPacket    = errors.New("invalid packet")
 )
+
+// rawSocketError wraps a raw socket error while preserving the original
+// error's type (especially syscall.Errno which implements net.Error).
+type rawSocketError struct {
+	msg string
+	err error
+}
+
+func (e *rawSocketError) Error() string {
+	return fmt.Sprintf("%s: %v", e.msg, e.err)
+}
+
+func (e *rawSocketError) Unwrap() error {
+	return e.err
+}

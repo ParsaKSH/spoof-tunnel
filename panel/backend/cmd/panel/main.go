@@ -15,10 +15,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/ParsaKSH/spooftunnel/panel/internal/api"
-	"github.com/ParsaKSH/spooftunnel/panel/internal/auth"
-	"github.com/ParsaKSH/spooftunnel/panel/internal/db"
-	"github.com/ParsaKSH/spooftunnel/panel/internal/manager"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/api"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/auth"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/db"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/manager"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -186,7 +186,7 @@ func main() {
 
 	addr := fmt.Sprintf("0.0.0.0:%d", listenPort)
 	log.Printf("╔══════════════════════════════════════╗")
-	log.Printf("║      Spoof Panel v1.0                ║")
+	log.Printf("║      Spoof Panel v3.0.0              ║")
 	log.Printf("║      http://0.0.0.0:%-17d║", listenPort)
 	log.Printf("╚══════════════════════════════════════╝")
 

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ParsaKSH/spooftunnel/panel/internal/db"
+	"github.com/ParsaKSH/spoof-tunnel/panel/internal/db"
 	"gorm.io/gorm"
 )
 
@@ -44,9 +44,7 @@ type Manager struct {
 	maxLogs  int
 
 	// Stats
-	startTime  time.Time
-	bytesSent  int64
-	bytesRecv  int64
+	startTime time.Time
 }
 
 // NewManager creates a new tunnel manager
@@ -85,8 +83,8 @@ func (m *Manager) Start() error {
 
 	m.status = StatusStarting
 
-	// Start the binary
-	m.cmd = exec.Command(m.binaryPath, "-c", m.configPath)
+	// Start the binary with "run --config" subcommand
+	m.cmd = exec.Command(m.binaryPath, "run", "--config", m.configPath)
 	m.cmd.Env = append(os.Environ(), "GODEBUG=madvdontneed=1")
 
 	// Capture stdout and stderr
@@ -206,81 +204,33 @@ func (m *Manager) streamLogs(reader io.Reader) {
 	}
 }
 
-// generateConfig builds a config.json from database records
+// generateConfig builds a config.json matching the new core format
 func (m *Manager) generateConfig() error {
 	var cfg db.ServerConfig
 	if err := m.db.First(&cfg).Error; err != nil {
 		return err
 	}
 
-	var inbounds []db.Inbound
-	m.db.Where("enabled = ?", true).Find(&inbounds)
-
-	// Build the config structure spoof-tunnel expects
 	tunnelCfg := map[string]interface{}{
-		"mode": cfg.Mode,
-		"transport": map[string]interface{}{
-			"type": cfg.TransportType,
-		},
-		"listen": map[string]interface{}{
-			"address": "0.0.0.0",
-			"port":    cfg.ListenPort,
-		},
-		"server": map[string]interface{}{
-			"address": cfg.ServerAddress,
-			"port":    cfg.ServerPort,
-		},
-		"spoof": map[string]interface{}{
-			"source_ip":     cfg.SpoofSourceIP,
-			"peer_spoof_ip": cfg.SpoofPeerIP,
-			"client_real_ip": cfg.ClientRealIP,
-		},
-		"crypto": map[string]interface{}{
-			"private_key":    cfg.PrivateKey,
-			"peer_public_key": cfg.PeerPublicKey,
-		},
-		"performance": map[string]interface{}{
-			"buffer_size":     cfg.BufferSize,
-			"mtu":             cfg.MTU,
-			"session_timeout": cfg.SessionTimeout,
-			"workers":         cfg.Workers,
-		},
-		"reliability": map[string]interface{}{
-			"enabled": cfg.ReliabilityEnabled,
-		},
-		"fec": map[string]interface{}{
-			"enabled": cfg.FECEnabled,
-		},
-		"logging": map[string]interface{}{
-			"level": cfg.LogLevel,
-		},
+		"mode":           cfg.Mode,
+		"send_transport": cfg.SendTransport,
+		"recv_transport": cfg.RecvTransport,
+		"spoof_ip":       cfg.SpoofIP,
+		"spoof_port":     cfg.SpoofPort,
+		"peer_spoof_ip":  cfg.PeerSpoofIP,
 	}
 
-	// Add relay_forward if set
-	if cfg.RelayForward != "" {
-		tunnelCfg["relay_forward"] = cfg.RelayForward
-	}
-	if cfg.RelayPort > 0 {
-		tunnelCfg["relay_port"] = cfg.RelayPort
-	}
-
-	// Build inbounds array
-	if len(inbounds) > 0 {
-		inboundList := make([]map[string]interface{}, 0, len(inbounds))
-		for _, inb := range inbounds {
-			entry := map[string]interface{}{
-				"type":   inb.Type,
-				"listen": inb.Listen,
-			}
-			if inb.Target != "" {
-				entry["target"] = inb.Target
-			}
-			if inb.RemotePort > 0 {
-				entry["remote_port"] = inb.RemotePort
-			}
-			inboundList = append(inboundList, entry)
-		}
-		tunnelCfg["inbounds"] = inboundList
+	switch cfg.Mode {
+	case "local":
+		tunnelCfg["listen"] = cfg.ListenAddr
+		tunnelCfg["remote"] = cfg.RemoteAddr
+		tunnelCfg["remote_port"] = cfg.RemotePort
+		tunnelCfg["recv_port"] = cfg.RecvPort
+	case "remote":
+		tunnelCfg["listen_port"] = cfg.ListenPort
+		tunnelCfg["forward"] = cfg.ForwardAddr
+		tunnelCfg["client_ip"] = cfg.ClientIP
+		tunnelCfg["client_port"] = cfg.ClientPort
 	}
 
 	data, err := json.MarshalIndent(tunnelCfg, "", "  ")
