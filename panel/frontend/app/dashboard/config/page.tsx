@@ -2,6 +2,13 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
+const TRANSPORT_OPTIONS = [
+  { value: "tcp", label: "TCP (SYN)" },
+  { value: "udp", label: "UDP" },
+  { value: "icmp", label: "ICMP" },
+  { value: "icmpv6", label: "ICMPv6" },
+];
+
 export default function ConfigPage() {
   const [config, setConfig] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -28,6 +35,8 @@ export default function ConfigPage() {
 
   if (!config) return <div style={{ color: "var(--text-secondary)" }}>Loading...</div>;
 
+  const isLocal = config.mode === "local";
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
@@ -48,134 +57,105 @@ export default function ConfigPage() {
             <div>
               <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Mode</label>
               <select className="input" value={config.mode} onChange={(e) => update("mode", e.target.value)}>
-                <option value="client">Client</option>
-                <option value="server">Server</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Transport</label>
-              <select className="input" value={config.transport_type} onChange={(e) => update("transport_type", e.target.value)}>
-                <option value="syn_udp">SYN + UDP</option>
-                <option value="udp">UDP</option>
-                <option value="icmp">ICMP</option>
-                <option value="raw">RAW</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Log Level</label>
-              <select className="input" value={config.log_level} onChange={(e) => update("log_level", e.target.value)}>
-                <option value="debug">Debug</option>
-                <option value="info">Info</option>
-                <option value="warn">Warn</option>
-                <option value="error">Error</option>
+                <option value="local">Local (Client)</option>
+                <option value="remote">Remote (Server)</option>
               </select>
             </div>
           </div>
         </div>
 
-        {/* Network */}
+        {/* Transport */}
         <div className="glass-card">
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Network</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Transport</h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Server Address</label>
-              <input className="input" value={config.server_address || ""} onChange={(e) => update("server_address", e.target.value)} placeholder="Server IP" />
+              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Send Transport</label>
+              <select className="input" value={config.send_transport} onChange={(e) => update("send_transport", e.target.value)}>
+                {TRANSPORT_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Server Port</label>
-              <input className="input" type="number" value={config.server_port} onChange={(e) => update("server_port", parseInt(e.target.value) || 0)} />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Listen Port (server mode)</label>
-              <input className="input" type="number" value={config.listen_port} onChange={(e) => update("listen_port", parseInt(e.target.value) || 0)} />
+              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Recv Transport</label>
+              <select className="input" value={config.recv_transport} onChange={(e) => update("recv_transport", e.target.value)}>
+                {TRANSPORT_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
+
+        {/* Local Mode Settings */}
+        {isLocal && (
+          <div className="glass-card">
+            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Local Mode</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Listen Address (UDP)</label>
+                <input className="input" value={config.listen_addr || ""} onChange={(e) => update("listen_addr", e.target.value)} placeholder="127.0.0.1:5000" />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Remote Server IP</label>
+                <input className="input" value={config.remote_addr || ""} onChange={(e) => update("remote_addr", e.target.value)} placeholder="Server IP" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Remote Port</label>
+                  <input className="input" type="number" value={config.remote_port} onChange={(e) => update("remote_port", parseInt(e.target.value) || 0)} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Recv Port</label>
+                  <input className="input" type="number" value={config.recv_port} onChange={(e) => update("recv_port", parseInt(e.target.value) || 0)} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Remote Mode Settings */}
+        {!isLocal && (
+          <div className="glass-card">
+            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Remote Mode</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Listen Port</label>
+                <input className="input" type="number" value={config.listen_port} onChange={(e) => update("listen_port", parseInt(e.target.value) || 0)} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Forward Address</label>
+                <input className="input" value={config.forward_addr || ""} onChange={(e) => update("forward_addr", e.target.value)} placeholder="127.0.0.1:51820" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Client IP</label>
+                  <input className="input" value={config.client_ip || ""} onChange={(e) => update("client_ip", e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Client Port</label>
+                  <input className="input" type="number" value={config.client_port} onChange={(e) => update("client_port", parseInt(e.target.value) || 0)} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Spoof */}
         <div className="glass-card">
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Spoof IPs</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Spoof Settings</h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Source IP (our spoof)</label>
-              <input className="input" value={config.spoof_source_ip || ""} onChange={(e) => update("spoof_source_ip", e.target.value)} />
+              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Spoof IP</label>
+              <input className="input" value={config.spoof_ip || ""} onChange={(e) => update("spoof_ip", e.target.value)} placeholder="Spoofed source IP" />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Peer Spoof IP (expected)</label>
-              <input className="input" value={config.spoof_peer_ip || ""} onChange={(e) => update("spoof_peer_ip", e.target.value)} />
+              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Spoof Port</label>
+              <input className="input" type="number" value={config.spoof_port} onChange={(e) => update("spoof_port", parseInt(e.target.value) || 0)} />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Client Real IP (server mode)</label>
-              <input className="input" value={config.client_real_ip || ""} onChange={(e) => update("client_real_ip", e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        {/* Crypto */}
-        <div className="glass-card">
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Crypto Keys</h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Private Key</label>
-              <input className="input" value={config.private_key || ""} onChange={(e) => update("private_key", e.target.value)} style={{ fontFamily: "monospace", fontSize: 12 }} />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Peer Public Key</label>
-              <input className="input" value={config.peer_public_key || ""} onChange={(e) => update("peer_public_key", e.target.value)} style={{ fontFamily: "monospace", fontSize: 12 }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Performance */}
-        <div className="glass-card">
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Performance</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>MTU</label>
-              <input className="input" type="number" value={config.mtu} onChange={(e) => update("mtu", parseInt(e.target.value) || 0)} />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Buffer Size</label>
-              <input className="input" type="number" value={config.buffer_size} onChange={(e) => update("buffer_size", parseInt(e.target.value) || 0)} />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Session Timeout</label>
-              <input className="input" type="number" value={config.session_timeout} onChange={(e) => update("session_timeout", parseInt(e.target.value) || 0)} />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Workers</label>
-              <input className="input" type="number" value={config.workers} onChange={(e) => update("workers", parseInt(e.target.value) || 0)} />
-            </div>
-          </div>
-        </div>
-
-        {/* Relay */}
-        <div className="glass-card">
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: "var(--accent)" }}>Relay (Server Mode)</h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Relay Forward Address</label>
-              <input className="input" value={config.relay_forward || ""} onChange={(e) => update("relay_forward", e.target.value)} placeholder="127.0.0.1:51822" />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Relay Port (direct bypass)</label>
-              <input className="input" type="number" value={config.relay_port || 0} onChange={(e) => update("relay_port", parseInt(e.target.value) || 0)} placeholder="8091" />
-            </div>
-            <div style={{ display: "flex", gap: 24 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <label className="toggle">
-                  <input type="checkbox" checked={config.reliability_enabled} onChange={(e) => update("reliability_enabled", e.target.checked)} />
-                  <div className="slider" />
-                </label>
-                <span style={{ fontSize: 13 }}>Reliability</span>
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <label className="toggle">
-                  <input type="checkbox" checked={config.fec_enabled} onChange={(e) => update("fec_enabled", e.target.checked)} />
-                  <div className="slider" />
-                </label>
-                <span style={{ fontSize: 13 }}>FEC</span>
-              </label>
+              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Peer Spoof IP (expected source)</label>
+              <input className="input" value={config.peer_spoof_ip || ""} onChange={(e) => update("peer_spoof_ip", e.target.value)} placeholder="Optional" />
             </div>
           </div>
         </div>

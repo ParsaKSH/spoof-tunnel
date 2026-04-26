@@ -47,12 +47,6 @@ export const api = {
   dashboard: () => request('/dashboard'),
   system: () => request('/system'),
 
-  // Inbounds
-  listInbounds: () => request('/inbounds'),
-  createInbound: (data: any) => request('/inbounds', { method: 'POST', body: JSON.stringify(data) }),
-  updateInbound: (id: number, data: any) => request(`/inbounds/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteInbound: (id: number) => request(`/inbounds/${id}`, { method: 'DELETE' }),
-
   // Config
   getConfig: () => request('/config'),
   updateConfig: (data: any) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
