@@ -29,6 +29,9 @@ jobs:
         working-directory: panel/backend
         run: go mod download
 
+      - name: Create mock web directory
+        run: mkdir -p panel/backend/cmd/panel/web && touch panel/backend/cmd/panel/web/index.html
+
       - name: Vet
         working-directory: panel/backend
         run: go vet ./...

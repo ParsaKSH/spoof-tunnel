@@ -41,8 +41,8 @@ rust/target/
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
-/.pnp
+panel/frontend/node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -51,14 +51,17 @@ rust/target/
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
 
 # next.js
-/.next/
-/out/
+panel/frontend/.next/
+panel/frontend/out/
+
+# embed
+panel/backend/cmd/panel/web/
 
 # production
-/build
+build/
 
 # misc
 .DS_Store
