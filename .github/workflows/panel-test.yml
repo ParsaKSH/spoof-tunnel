@@ -143,25 +143,20 @@ jobs:
           echo "System: $SYS"
           echo "$SYS" | grep -q "hostname" || exit 1
 
-          # Inbounds CRUD
-          echo "--- Create inbound ---"
-          CREATE=$(curl -s -X POST http://localhost:18888/api/inbounds \
+          # Config API
+          echo "--- Get config ---"
+          CFG=$(curl -s http://localhost:18888/api/config \
+            -H "Authorization: Bearer $TOKEN")
+          echo "$CFG"
+          echo "$CFG" | grep -q "send_transport" || exit 1
+
+          echo "--- Update config ---"
+          UPD=$(curl -s -X PUT http://localhost:18888/api/config \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"type":"socks","listen":"127.0.0.1:1080","remark":"test"}')
-          echo "$CREATE"
-          INB_ID=$(echo "$CREATE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
-          [ -n "$INB_ID" ] || exit 1
-
-          echo "--- List inbounds ---"
-          LIST=$(curl -s http://localhost:18888/api/inbounds \
-            -H "Authorization: Bearer $TOKEN")
-          echo "$LIST"
-          echo "$LIST" | grep -q "socks" || exit 1
-
-          echo "--- Delete inbound ---"
-          curl -s -X DELETE "http://localhost:18888/api/inbounds/$INB_ID" \
-            -H "Authorization: Bearer $TOKEN"
+            -d '{"mode":"local","send_transport":"tcp","recv_transport":"udp","spoof_ip":"1.2.3.4","spoof_port":443}')
+          echo "$UPD"
+          echo "$UPD" | grep -q "tcp" || exit 1
 
           # Frontend serving
           HTML_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18888/)

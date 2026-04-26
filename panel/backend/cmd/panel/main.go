@@ -186,7 +186,7 @@ func main() {
 
 	addr := fmt.Sprintf("0.0.0.0:%d", listenPort)
 	log.Printf("╔══════════════════════════════════════╗")
-	log.Printf("║      Spoof Panel v1.0                ║")
+	log.Printf("║      Spoof Panel v3.0.0              ║")
 	log.Printf("║      http://0.0.0.0:%-17d║", listenPort)
 	log.Printf("╚══════════════════════════════════════╝")
 
