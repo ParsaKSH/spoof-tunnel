@@ -101,13 +101,8 @@ export default function TesterPage() {
 
   const handleApplyToConfig = async () => {
     const ips = state.results.filter(r => r.passed).map(r => r.ip).join("\n");
-    try {
-      await api.setSpoofIPs(ips);
-      setError("");
-      alert("Spoof IPs applied to tunnel config!");
-    } catch (e: any) {
-      setError(e.message);
-    }
+    await navigator.clipboard.writeText(ips);
+    alert("Passed IPs copied! Go to Tunnels → select instance → Spoof IPs tab to paste them.");
   };
 
   const passedCount = state.results.filter(r => r.passed).length;

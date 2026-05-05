@@ -68,16 +68,23 @@ func (s *Server) setupRoutes() {
 			protected.GET("/dashboard", s.handleDashboard)
 			protected.GET("/system", s.handleSystem)
 
-			// Config
-			protected.GET("/config", s.handleGetConfig)
-			protected.PUT("/config", s.handleUpdateConfig)
+			// Tunnel Instances CRUD
+			protected.GET("/instances", s.handleListInstances)
+			protected.POST("/instances", s.handleCreateInstance)
+			protected.GET("/instances/:id", s.handleGetInstance)
+			protected.PUT("/instances/:id", s.handleUpdateInstance)
+			protected.DELETE("/instances/:id", s.handleDeleteInstance)
 
-			// Tunnel control
-			protected.POST("/tunnel/start", s.handleTunnelStart)
-			protected.POST("/tunnel/stop", s.handleTunnelStop)
-			protected.POST("/tunnel/restart", s.handleTunnelRestart)
-			protected.GET("/tunnel/status", s.handleTunnelStatus)
-			protected.GET("/tunnel/logs", s.handleTunnelLogs)
+			// Tunnel Instance Control
+			protected.POST("/instances/:id/start", s.handleInstanceStart)
+			protected.POST("/instances/:id/stop", s.handleInstanceStop)
+			protected.POST("/instances/:id/restart", s.handleInstanceRestart)
+			protected.GET("/instances/:id/status", s.handleInstanceStatus)
+			protected.GET("/instances/:id/logs", s.handleInstanceLogs)
+
+			// Instance Spoof IPs
+			protected.GET("/instances/:id/spoof-ips", s.handleGetInstanceSpoofIPs)
+			protected.PUT("/instances/:id/spoof-ips", s.handleSetInstanceSpoofIPs)
 
 			// Tester
 			protected.POST("/tester/start", s.handleTesterStart)
@@ -86,12 +93,6 @@ func (s *Server) setupRoutes() {
 			protected.GET("/tester/results", s.handleTesterResults)
 			protected.GET("/tester/download", s.handleTesterDownload)
 			protected.POST("/tester/upload", s.handleTesterUpload)
-
-			// Spoof IP file management
-			protected.GET("/spoof-ips", s.handleGetSpoofIPs)
-			protected.PUT("/spoof-ips", s.handleSetSpoofIPs)
-			protected.POST("/spoof-ips/upload", s.handleUploadSpoofIPs)
-			protected.GET("/spoof-ips/download", s.handleDownloadSpoofIPs)
 
 			// Settings
 			protected.PUT("/settings/password", s.handleChangePassword)

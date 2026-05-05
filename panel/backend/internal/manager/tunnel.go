@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,191 +27,318 @@ const (
 	StatusError    TunnelStatus = "error"
 )
 
-// Manager manages the spoof-tunnel process
-type Manager struct {
-	db         *gorm.DB
-	binaryPath string
-	configPath string
-
-	cmd    *exec.Cmd
-	status TunnelStatus
-	error  string
-	mu     sync.Mutex
-
-	// Log streaming
-	logLines []string
-	logMu    sync.RWMutex
-	logCh    chan string
-	maxLogs  int
-
-	// Stats
+// Instance represents a single running tunnel process
+type Instance struct {
+	ID        uint
+	cmd       *exec.Cmd
+	status    TunnelStatus
+	error     string
+	mu        sync.Mutex
+	logLines  []string
+	logMu     sync.RWMutex
+	logCh     chan string
+	maxLogs   int
 	startTime time.Time
 }
 
-// NewManager creates a new tunnel manager
+func newInstance(id uint) *Instance {
+	return &Instance{
+		ID:       id,
+		status:   StatusStopped,
+		logLines: make([]string, 0, 1000),
+		logCh:    make(chan string, 100),
+		maxLogs:  1000,
+	}
+}
+
+// Manager manages multiple tunnel instances
+type Manager struct {
+	db         *gorm.DB
+	binaryPath string
+	configDir  string
+	instances  map[uint]*Instance
+	mu         sync.RWMutex
+}
+
+// NewManager creates a new multi-instance tunnel manager
 func NewManager(database *gorm.DB, binaryPath, configDir string) *Manager {
 	return &Manager{
 		db:         database,
 		binaryPath: binaryPath,
-		configPath: filepath.Join(configDir, "tunnel-config.json"),
-		status:     StatusStopped,
-		logLines:   make([]string, 0, 1000),
-		logCh:      make(chan string, 100),
-		maxLogs:    1000,
+		configDir:  configDir,
+		instances:  make(map[uint]*Instance),
 	}
 }
 
-// Status returns current tunnel status
-func (m *Manager) Status() (TunnelStatus, string) {
+// getInstance returns or creates an Instance tracker for the given ID
+func (m *Manager) getInstance(id uint) *Instance {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.status, m.error
+	inst, ok := m.instances[id]
+	if !ok {
+		inst = newInstance(id)
+		m.instances[id] = inst
+	}
+	return inst
 }
 
-// Start starts the tunnel process
-func (m *Manager) Start() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// InstanceStatus returns current status for an instance
+func (m *Manager) InstanceStatus(id uint) (TunnelStatus, string) {
+	inst := m.getInstance(id)
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+	return inst.status, inst.error
+}
 
-	if m.status == StatusRunning {
-		return fmt.Errorf("tunnel already running")
+// StartInstance starts a tunnel instance
+func (m *Manager) StartInstance(id uint) error {
+	inst := m.getInstance(id)
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+
+	if inst.status == StatusRunning {
+		return fmt.Errorf("instance %d already running", id)
 	}
 
-	// Generate config from DB
-	if err := m.generateConfig(); err != nil {
+	// Load config from DB
+	var cfg db.TunnelInstance
+	if err := m.db.First(&cfg, id).Error; err != nil {
+		return fmt.Errorf("instance %d not found: %w", id, err)
+	}
+
+	// Generate config file
+	configPath, err := m.generateConfig(cfg)
+	if err != nil {
 		return fmt.Errorf("generate config: %w", err)
 	}
 
-	m.status = StatusStarting
+	// Write spoof IP file if needed
+	if cfg.SpoofIPList != "" {
+		spoofPath := m.spoofIPFilePath(id)
+		os.MkdirAll(filepath.Dir(spoofPath), 0755)
+		if err := os.WriteFile(spoofPath, []byte(cfg.SpoofIPList+"\n"), 0644); err != nil {
+			return fmt.Errorf("write spoof IPs: %w", err)
+		}
+	}
 
-	// Start the binary with "run --config" subcommand
-	m.cmd = exec.Command(m.binaryPath, "run", "--config", m.configPath)
-	m.cmd.Env = append(os.Environ(), "GODEBUG=madvdontneed=1")
+	inst.status = StatusStarting
 
-	// Capture stdout and stderr
-	stdout, err := m.cmd.StdoutPipe()
+	// Start the binary
+	inst.cmd = exec.Command(m.binaryPath, "run", "--config", configPath)
+	inst.cmd.Env = append(os.Environ(), "GODEBUG=madvdontneed=1")
+
+	stdout, err := inst.cmd.StdoutPipe()
 	if err != nil {
-		m.status = StatusError
-		m.error = err.Error()
+		inst.status = StatusError
+		inst.error = err.Error()
 		return err
 	}
-	stderr, err := m.cmd.StderrPipe()
+	stderr, err := inst.cmd.StderrPipe()
 	if err != nil {
-		m.status = StatusError
-		m.error = err.Error()
+		inst.status = StatusError
+		inst.error = err.Error()
 		return err
 	}
 
-	if err := m.cmd.Start(); err != nil {
-		m.status = StatusError
-		m.error = err.Error()
+	if err := inst.cmd.Start(); err != nil {
+		inst.status = StatusError
+		inst.error = err.Error()
 		return err
 	}
 
-	m.status = StatusRunning
-	m.error = ""
-	m.startTime = time.Now()
+	inst.status = StatusRunning
+	inst.error = ""
+	inst.startTime = time.Now()
 
-	// Stream logs
-	go m.streamLogs(stdout)
-	go m.streamLogs(stderr)
+	// Clear old logs
+	inst.logMu.Lock()
+	inst.logLines = make([]string, 0, 1000)
+	inst.logMu.Unlock()
 
-	// Wait for process to exit
+	go streamLogs(inst, stdout)
+	go streamLogs(inst, stderr)
+
 	go func() {
-		err := m.cmd.Wait()
-		m.mu.Lock()
-		if m.status == StatusRunning {
-			m.status = StatusStopped
+		err := inst.cmd.Wait()
+		inst.mu.Lock()
+		if inst.status == StatusRunning {
+			inst.status = StatusStopped
 			if err != nil {
-				m.status = StatusError
-				m.error = err.Error()
+				inst.status = StatusError
+				inst.error = err.Error()
 			}
 		}
-		m.mu.Unlock()
+		inst.mu.Unlock()
 	}()
 
+	log.Printf("[manager] started instance %d (%s)", id, cfg.Name)
 	return nil
 }
 
-// Stop stops the tunnel process
-func (m *Manager) Stop() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// StopInstance stops a tunnel instance
+func (m *Manager) StopInstance(id uint) error {
+	inst := m.getInstance(id)
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
 
-	if m.cmd == nil || m.cmd.Process == nil {
-		m.status = StatusStopped
+	if inst.cmd == nil || inst.cmd.Process == nil {
+		inst.status = StatusStopped
 		return nil
 	}
 
-	m.status = StatusStopped
-	return m.cmd.Process.Kill()
+	inst.status = StatusStopped
+	log.Printf("[manager] stopping instance %d", id)
+	return inst.cmd.Process.Kill()
 }
 
-// Restart restarts the tunnel
-func (m *Manager) Restart() error {
-	m.Stop()
+// RestartInstance restarts a tunnel instance
+func (m *Manager) RestartInstance(id uint) error {
+	m.StopInstance(id)
 	time.Sleep(500 * time.Millisecond)
-	return m.Start()
+	return m.StartInstance(id)
 }
 
-// Uptime returns tunnel uptime
-func (m *Manager) Uptime() time.Duration {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.status != StatusRunning {
+// InstanceUptime returns uptime for an instance
+func (m *Manager) InstanceUptime(id uint) time.Duration {
+	inst := m.getInstance(id)
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+	if inst.status != StatusRunning {
 		return 0
 	}
-	return time.Since(m.startTime)
+	return time.Since(inst.startTime)
 }
 
-// GetLogs returns recent log lines
-func (m *Manager) GetLogs(n int) []string {
-	m.logMu.RLock()
-	defer m.logMu.RUnlock()
+// InstanceLogs returns recent log lines for an instance
+func (m *Manager) InstanceLogs(id uint, n int) []string {
+	inst := m.getInstance(id)
+	inst.logMu.RLock()
+	defer inst.logMu.RUnlock()
 
-	if n <= 0 || n > len(m.logLines) {
-		n = len(m.logLines)
+	if n <= 0 || n > len(inst.logLines) {
+		n = len(inst.logLines)
 	}
-	start := len(m.logLines) - n
+	start := len(inst.logLines) - n
 	result := make([]string, n)
-	copy(result, m.logLines[start:])
+	copy(result, inst.logLines[start:])
 	return result
 }
 
-// LogChannel returns the log channel for WebSocket streaming
+// InstanceLogChannel returns the log channel for WebSocket streaming
+func (m *Manager) InstanceLogChannel(id uint) <-chan string {
+	inst := m.getInstance(id)
+	return inst.logCh
+}
+
+// RemoveInstance cleans up instance state after deletion
+func (m *Manager) RemoveInstance(id uint) {
+	m.StopInstance(id)
+	m.mu.Lock()
+	delete(m.instances, id)
+	m.mu.Unlock()
+
+	// Clean up files
+	os.Remove(m.configFilePath(id))
+	os.Remove(m.spoofIPFilePath(id))
+}
+
+// StopAll stops all running instances
+func (m *Manager) StopAll() {
+	m.mu.RLock()
+	ids := make([]uint, 0, len(m.instances))
+	for id := range m.instances {
+		ids = append(ids, id)
+	}
+	m.mu.RUnlock()
+
+	for _, id := range ids {
+		m.StopInstance(id)
+	}
+}
+
+// AllStatuses returns status for all known instances
+func (m *Manager) AllStatuses() map[uint]TunnelStatus {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make(map[uint]TunnelStatus, len(m.instances))
+	for id, inst := range m.instances {
+		inst.mu.Lock()
+		result[id] = inst.status
+		inst.mu.Unlock()
+	}
+	return result
+}
+
+// ── Legacy compatibility ──
+
+// Status returns the status of the first instance (for backward compat)
+func (m *Manager) Status() (TunnelStatus, string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, inst := range m.instances {
+		inst.mu.Lock()
+		s, e := inst.status, inst.error
+		inst.mu.Unlock()
+		return s, e
+	}
+	return StatusStopped, ""
+}
+
+// Uptime returns the uptime of the first instance
+func (m *Manager) Uptime() time.Duration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, inst := range m.instances {
+		inst.mu.Lock()
+		if inst.status != StatusRunning {
+			inst.mu.Unlock()
+			return 0
+		}
+		d := time.Since(inst.startTime)
+		inst.mu.Unlock()
+		return d
+	}
+	return 0
+}
+
+// GetLogs returns logs from the first instance
+func (m *Manager) GetLogs(n int) []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for id := range m.instances {
+		return m.InstanceLogs(id, n)
+	}
+	return nil
+}
+
+// LogChannel returns log channel from the first instance
 func (m *Manager) LogChannel() <-chan string {
-	return m.logCh
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for id := range m.instances {
+		return m.InstanceLogChannel(id)
+	}
+	ch := make(chan string)
+	close(ch)
+	return ch
 }
 
-func (m *Manager) streamLogs(reader io.Reader) {
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 4096), 4096)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		m.logMu.Lock()
-		m.logLines = append(m.logLines, line)
-		if len(m.logLines) > m.maxLogs {
-			m.logLines = m.logLines[len(m.logLines)-m.maxLogs:]
-		}
-		m.logMu.Unlock()
-
-		// Non-blocking send to channel
-		select {
-		case m.logCh <- line:
-		default:
-		}
-	}
+// BinaryPath returns the path to the spoof binary
+func (m *Manager) BinaryPath() string {
+	return m.binaryPath
 }
 
-// generateConfig builds a config.json matching the new core format
-func (m *Manager) generateConfig() error {
-	var cfg db.ServerConfig
-	if err := m.db.First(&cfg).Error; err != nil {
-		return err
-	}
+// ── Internal ──
 
+func (m *Manager) configFilePath(id uint) string {
+	return filepath.Join(m.configDir, fmt.Sprintf("tunnel-config-%d.json", id))
+}
+
+func (m *Manager) spoofIPFilePath(id uint) string {
+	return filepath.Join(m.configDir, fmt.Sprintf("spoof-ips-%d.txt", id))
+}
+
+func (m *Manager) generateConfig(cfg db.TunnelInstance) (string, error) {
 	tunnelCfg := map[string]interface{}{
 		"mode":           cfg.Mode,
 		"send_transport": cfg.SendTransport,
@@ -218,6 +346,12 @@ func (m *Manager) generateConfig() error {
 		"spoof_ip":       cfg.SpoofIP,
 		"spoof_port":     cfg.SpoofPort,
 		"peer_spoof_ip":  cfg.PeerSpoofIP,
+	}
+
+	// If inline spoof IPs exist, write them to a file and reference it
+	if strings.TrimSpace(cfg.SpoofIPList) != "" {
+		spoofPath := m.spoofIPFilePath(cfg.ID)
+		tunnelCfg["spoof_ip_file"] = spoofPath
 	}
 
 	switch cfg.Mode {
@@ -235,17 +369,33 @@ func (m *Manager) generateConfig() error {
 
 	data, err := json.MarshalIndent(tunnelCfg, "", "  ")
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	dir := filepath.Dir(m.configPath)
-	os.MkdirAll(dir, 0755)
+	configPath := m.configFilePath(cfg.ID)
+	os.MkdirAll(filepath.Dir(configPath), 0755)
 
-	log.Printf("[manager] writing config to %s", m.configPath)
-	return os.WriteFile(m.configPath, data, 0600)
+	log.Printf("[manager] writing config for instance %d to %s", cfg.ID, configPath)
+	return configPath, os.WriteFile(configPath, data, 0600)
 }
 
-// BinaryPath returns the path to the spoof binary
-func (m *Manager) BinaryPath() string {
-	return m.binaryPath
+func streamLogs(inst *Instance, reader io.Reader) {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 4096), 4096)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		inst.logMu.Lock()
+		inst.logLines = append(inst.logLines, line)
+		if len(inst.logLines) > inst.maxLogs {
+			inst.logLines = inst.logLines[len(inst.logLines)-inst.maxLogs:]
+		}
+		inst.logMu.Unlock()
+
+		select {
+		case inst.logCh <- line:
+		default:
+		}
+	}
 }

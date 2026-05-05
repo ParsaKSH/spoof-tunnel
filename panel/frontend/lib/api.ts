@@ -47,19 +47,23 @@ export const api = {
   dashboard: () => request('/dashboard'),
   system: () => request('/system'),
 
-  // Config
-  getConfig: () => request('/config'),
-  updateConfig: (data: any) => request('/config', { method: 'PUT', body: JSON.stringify(data) }),
+  // Tunnel Instances
+  listInstances: () => request('/instances'),
+  createInstance: (data: any) => request('/instances', { method: 'POST', body: JSON.stringify(data) }),
+  getInstance: (id: number) => request(`/instances/${id}`),
+  updateInstance: (id: number, data: any) => request(`/instances/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteInstance: (id: number) => request(`/instances/${id}`, { method: 'DELETE' }),
 
-  // Tunnel
-  tunnelStart: () => request('/tunnel/start', { method: 'POST' }),
-  tunnelStop: () => request('/tunnel/stop', { method: 'POST' }),
-  tunnelRestart: () => request('/tunnel/restart', { method: 'POST' }),
-  tunnelStatus: () => request('/tunnel/status'),
+  // Instance Control
+  instanceStart: (id: number) => request(`/instances/${id}/start`, { method: 'POST' }),
+  instanceStop: (id: number) => request(`/instances/${id}/stop`, { method: 'POST' }),
+  instanceRestart: (id: number) => request(`/instances/${id}/restart`, { method: 'POST' }),
+  instanceStatus: (id: number) => request(`/instances/${id}/status`),
 
-  // Settings
-  changePassword: (oldPassword: string, newPassword: string) =>
-    request('/settings/password', { method: 'PUT', body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }) }),
+  // Instance Spoof IPs
+  getInstanceSpoofIPs: (id: number) => request(`/instances/${id}/spoof-ips`),
+  setInstanceSpoofIPs: (id: number, content: string) =>
+    request(`/instances/${id}/spoof-ips`, { method: 'PUT', body: JSON.stringify({ content }) }),
 
   // Tester
   testerStart: (data: any) => request('/tester/start', { method: 'POST', body: JSON.stringify(data) }),
@@ -80,20 +84,7 @@ export const api = {
     return res.json();
   },
 
-  // Spoof IP File
-  getSpoofIPs: () => request('/spoof-ips'),
-  setSpoofIPs: (content: string) => request('/spoof-ips', { method: 'PUT', body: JSON.stringify({ content }) }),
-  uploadSpoofIPs: async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const token = getToken();
-    const res = await fetch(`${API_BASE}/spoof-ips/upload`, {
-      method: 'POST',
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      body: formData,
-    });
-    if (!res.ok) throw new Error('Upload failed');
-    return res.json();
-  },
-  downloadSpoofIPsUrl: () => `${API_BASE}/spoof-ips/download?token=${getToken()}`,
+  // Settings
+  changePassword: (oldPassword: string, newPassword: string) =>
+    request('/settings/password', { method: 'PUT', body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }) }),
 };
