@@ -1,6 +1,6 @@
 module github.com/ParsaKSH/spoof-tunnel
 
-go 1.25.0
+go 1.26.2
 
 require github.com/spf13/cobra v1.10.2
 

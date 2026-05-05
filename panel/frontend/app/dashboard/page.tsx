@@ -1,11 +1,23 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 
-interface DashData {
-  tunnel_status: string;
-  tunnel_error: string;
+interface DashInstance {
+  id: number;
+  name: string;
+  mode: string;
+  status: string;
   uptime: number;
+  error?: string;
+}
+
+interface DashData {
+  instances: DashInstance[];
+  total: number;
+  running_count: number;
+  stopped_count: number;
+  error_count: number;
 }
 
 interface SysData {
@@ -31,7 +43,6 @@ function formatUptime(seconds: number): string {
 export default function DashboardPage() {
   const [dash, setDash] = useState<DashData | null>(null);
   const [sys, setSys] = useState<SysData | null>(null);
-  const [loading, setLoading] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -47,94 +58,102 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleAction = async (action: "start" | "stop" | "restart") => {
-    setLoading(true);
+  const handleAction = async (id: number, action: "start" | "stop") => {
     try {
-      if (action === "start") await api.tunnelStart();
-      else if (action === "stop") await api.tunnelStop();
-      else await api.tunnelRestart();
-      setTimeout(fetchData, 1000);
+      if (action === "start") await api.instanceStart(id);
+      else await api.instanceStop(id);
+      setTimeout(fetchData, 800);
     } catch (err: any) {
       alert(err.message);
-    } finally {
-      setLoading(false);
     }
   };
-
-  const status = dash?.tunnel_status || "stopped";
 
   return (
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 32 }}>Dashboard</h1>
 
-      {/* Status Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 20, marginBottom: 32 }}>
-        {/* Tunnel Status */}
-        <div className="glass-card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div className={`status-dot ${status}`} />
-            <span style={{ color: "var(--text-secondary)", fontSize: 13, textTransform: "uppercase", fontWeight: 600 }}>
-              Tunnel Status
-            </span>
+      {/* Summary Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 20, marginBottom: 32 }}>
+        <div className="glass-card" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 600, marginBottom: 10 }}>Total Tunnels</div>
+          <div style={{ fontSize: 36, fontWeight: 700 }}>{dash?.total || 0}</div>
+        </div>
+        <div className="glass-card" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 600, marginBottom: 10 }}>🟢 Running</div>
+          <div style={{ fontSize: 36, fontWeight: 700, color: "var(--success)" }}>{dash?.running_count || 0}</div>
+        </div>
+        <div className="glass-card" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 600, marginBottom: 10 }}>🔴 Stopped</div>
+          <div style={{ fontSize: 36, fontWeight: 700, color: "var(--text-secondary)" }}>{dash?.stopped_count || 0}</div>
+        </div>
+        <div className="glass-card" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", fontWeight: 600, marginBottom: 10 }}>💾 Memory</div>
+          <div style={{ fontSize: 36, fontWeight: 700 }}>{sys?.memory_mb || 0} <span style={{ fontSize: 16 }}>MB</span></div>
+        </div>
+      </div>
+
+      {/* Tunnel Instances */}
+      {dash && dash.instances && dash.instances.length > 0 && (
+        <div className="glass-card" style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600 }}>Tunnel Instances</h2>
+            <Link href="/dashboard/tunnels" className="btn btn-ghost" style={{ textDecoration: "none", fontSize: 13 }}>
+              Manage All →
+            </Link>
           </div>
-          <span style={{ fontSize: 28, fontWeight: 700, textTransform: "capitalize" }}>{status}</span>
-          {dash?.tunnel_error && (
-            <span style={{ fontSize: 12, color: "var(--danger)" }}>{dash.tunnel_error}</span>
-          )}
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Name</th>
+                <th>Mode</th>
+                <th>Uptime</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dash.instances.map(inst => (
+                <tr key={inst.id}>
+                  <td><div className={`status-dot ${inst.status}`} /></td>
+                  <td>
+                    <Link href={`/dashboard/tunnels/edit?id=${inst.id}`} style={{ color: "var(--text-primary)", textDecoration: "none", fontWeight: 500 }}>
+                      {inst.name}
+                    </Link>
+                  </td>
+                  <td>
+                    <span style={{
+                      padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600,
+                      background: inst.mode === "local" ? "#6366f120" : "#22c55e20",
+                      color: inst.mode === "local" ? "#818cf8" : "#22c55e",
+                    }}>{inst.mode.toUpperCase()}</span>
+                  </td>
+                  <td style={{ fontSize: 13 }}>{formatUptime(inst.uptime)}</td>
+                  <td>
+                    {inst.status !== "running" ? (
+                      <button className="btn btn-success" style={{ padding: "4px 12px", fontSize: 12 }}
+                        onClick={() => handleAction(inst.id, "start")}>▶</button>
+                    ) : (
+                      <button className="btn btn-danger" style={{ padding: "4px 12px", fontSize: 12 }}
+                        onClick={() => handleAction(inst.id, "stop")}>⏹</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+      )}
 
-        {/* Uptime */}
-        <div className="glass-card">
-          <span style={{ color: "var(--text-secondary)", fontSize: 13, textTransform: "uppercase", fontWeight: 600, display: "block", marginBottom: 12 }}>
-            ⏱ Uptime
-          </span>
-          <span style={{ fontSize: 28, fontWeight: 700 }}>{formatUptime(dash?.uptime || 0)}</span>
+      {/* Empty state */}
+      {dash && (!dash.instances || dash.instances.length === 0) && (
+        <div className="glass-card" style={{ textAlign: "center", padding: 48, marginBottom: 32 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🔗</div>
+          <p style={{ color: "var(--text-secondary)", marginBottom: 16 }}>No tunnel instances yet.</p>
+          <Link href="/dashboard/tunnels" className="btn btn-primary" style={{ textDecoration: "none" }}>
+            + Create Tunnel
+          </Link>
         </div>
-
-        {/* Goroutines */}
-        <div className="glass-card">
-          <span style={{ color: "var(--text-secondary)", fontSize: 13, textTransform: "uppercase", fontWeight: 600, display: "block", marginBottom: 12 }}>
-            ⚡ Goroutines
-          </span>
-          <span style={{ fontSize: 28, fontWeight: 700 }}>{sys?.goroutines || 0}</span>
-        </div>
-
-        {/* Memory */}
-        <div className="glass-card">
-          <span style={{ color: "var(--text-secondary)", fontSize: 13, textTransform: "uppercase", fontWeight: 600, display: "block", marginBottom: 12 }}>
-            💾 Memory
-          </span>
-          <span style={{ fontSize: 28, fontWeight: 700 }}>{sys?.memory_mb || 0} MB</span>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="glass-card" style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 20 }}>Tunnel Control</h2>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button
-            className="btn btn-success"
-            onClick={() => handleAction("start")}
-            disabled={loading || status === "running"}
-          >
-            ▶ Start
-          </button>
-          <button
-            className="btn btn-danger"
-            onClick={() => handleAction("stop")}
-            disabled={loading || status === "stopped"}
-          >
-            ⏹ Stop
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={() => handleAction("restart")}
-            disabled={loading}
-          >
-            🔄 Restart
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* System Info */}
       {sys && (

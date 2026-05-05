@@ -1,8 +1,9 @@
 module github.com/ParsaKSH/spoof-tunnel/panel
 
-go 1.23
+go 1.26.2
 
 require (
+	github.com/ParsaKSH/spoof-tunnel v0.0.0
 	github.com/gin-contrib/cors v1.7.3
 	github.com/gin-gonic/gin v1.10.0
 	github.com/glebarez/sqlite v1.11.0
@@ -11,6 +12,8 @@ require (
 	golang.org/x/crypto v0.31.0
 	gorm.io/gorm v1.25.12
 )
+
+replace github.com/ParsaKSH/spoof-tunnel => ../../
 
 require (
 	github.com/bytedance/sonic v1.12.6 // indirect

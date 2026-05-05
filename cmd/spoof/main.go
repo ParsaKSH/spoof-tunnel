@@ -10,6 +10,7 @@ import (
 
 	"github.com/ParsaKSH/spoof-tunnel/internal/config"
 	"github.com/ParsaKSH/spoof-tunnel/internal/relay"
+	"github.com/ParsaKSH/spoof-tunnel/internal/tester"
 	"github.com/spf13/cobra"
 )
 
@@ -25,6 +26,7 @@ func main() {
 	root.AddCommand(localCmd())
 	root.AddCommand(remoteCmd())
 	root.AddCommand(runCmd())
+	root.AddCommand(testerCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -349,6 +351,105 @@ func runRemote(listenPort int, forward, clientIP string, clientPort int, spoofIP
 	}()
 
 	r.Run()
+}
+
+func testerCmd() *cobra.Command {
+	var (
+		mode          string
+		protocol      string
+		srcList       string
+		dstIP         string
+		dstPort       int
+		timeout       int
+		packetCount   int
+		maxPacketLoss float64
+		concurrency   int
+	)
+
+	cmd := &cobra.Command{
+		Use:   "tester",
+		Short: "Run spoof IP tester (sender or receiver)",
+		Run: func(cmd *cobra.Command, args []string) {
+			requireRoot()
+
+			srcIPs, err := tester.ParseIPList(srcList)
+			if err != nil {
+				log.Fatalf("src-list: %v", err)
+			}
+			log.Printf("[tester] loaded %d source IPs from %s", len(srcIPs), srcList)
+
+			cfg := tester.TesterConfig{
+				Mode:          mode,
+				Protocol:      protocol,
+				DstIP:         dstIP,
+				DstPort:       dstPort,
+				Timeout:       timeout,
+				PacketCount:   packetCount,
+				MaxPacketLoss: maxPacketLoss,
+				Concurrency:   concurrency,
+			}
+
+			runner := tester.NewRunner()
+
+			log.Printf("[tester] mode=%s protocol=%s packet_count=%d max_loss=%.1f%%",
+				mode, protocol, packetCount, maxPacketLoss)
+
+			switch mode {
+			case "sender":
+				if dstIP == "" {
+					log.Fatal("--dst-ip is required for sender mode")
+				}
+				if err := runner.RunSender(cfg, srcIPs); err != nil {
+					log.Fatalf("tester sender: %v", err)
+				}
+			case "receiver":
+				if err := runner.RunReceiver(cfg, srcIPs); err != nil {
+					log.Fatalf("tester receiver: %v", err)
+				}
+			default:
+				log.Fatalf("mode must be 'sender' or 'receiver', got %q", mode)
+			}
+
+			// Wait for completion
+			for {
+				state := runner.State()
+				if state.Status != "running" {
+					if state.Status == "error" {
+						log.Fatalf("tester error: %s", state.Error)
+					}
+					// Print results for receiver
+					if mode == "receiver" {
+						passed := 0
+						for _, r := range state.Results {
+							if r.Passed {
+								fmt.Printf("%s %d/%d %.1f%%\n", r.IP, r.Received, r.Sent, r.LossPct)
+								passed++
+							}
+						}
+						log.Printf("[tester] %d/%d IPs passed", passed, len(state.Results))
+					}
+					break
+				}
+				// Small sleep to avoid busy-waiting
+				select {
+				case <-make(chan struct{}):
+				default:
+				}
+			}
+		},
+	}
+
+	cmd.Flags().StringVar(&mode, "mode", "sender", "tester mode: sender or receiver")
+	cmd.Flags().StringVar(&protocol, "protocol", "icmp", "protocol: tcp or icmp")
+	cmd.Flags().StringVar(&srcList, "src-list", "sources.txt", "path to source IPs file")
+	cmd.Flags().StringVar(&dstIP, "dst-ip", "", "destination IP (sender mode)")
+	cmd.Flags().IntVar(&dstPort, "dst-port", 80, "destination port (TCP only)")
+	cmd.Flags().IntVar(&timeout, "timeout", 30, "receiver timeout in seconds")
+	cmd.Flags().IntVar(&packetCount, "packet-count", 10, "packets per source IP")
+	cmd.Flags().Float64Var(&maxPacketLoss, "max-loss", 20.0, "max allowed packet loss %")
+	cmd.Flags().IntVar(&concurrency, "concurrency", 100, "sender concurrency")
+
+	return cmd
 }
 
 func requireRoot() {

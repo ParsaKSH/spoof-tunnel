@@ -180,7 +180,7 @@ func main() {
 	go func() {
 		<-sigCh
 		log.Println("Shutting down...")
-		mgr.Stop()
+		mgr.StopAll()
 		os.Exit(0)
 	}()
 

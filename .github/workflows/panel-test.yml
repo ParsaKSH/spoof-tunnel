@@ -138,7 +138,7 @@ jobs:
           DASH=$(curl -s http://localhost:18888/api/dashboard \
             -H "Authorization: Bearer $TOKEN")
           echo "Dashboard: $DASH"
-          echo "$DASH" | grep -q "tunnel_status" || exit 1
+          echo "$DASH" | grep -q "total" || exit 1
 
           # System info
           SYS=$(curl -s http://localhost:18888/api/system \
@@ -146,20 +146,55 @@ jobs:
           echo "System: $SYS"
           echo "$SYS" | grep -q "hostname" || exit 1
 
-          # Config API
-          echo "--- Get config ---"
-          CFG=$(curl -s http://localhost:18888/api/config \
-            -H "Authorization: Bearer $TOKEN")
-          echo "$CFG"
-          echo "$CFG" | grep -q "send_transport" || exit 1
-
-          echo "--- Update config ---"
-          UPD=$(curl -s -X PUT http://localhost:18888/api/config \
+          # Create tunnel instance
+          echo "--- Create instance ---"
+          INST=$(curl -s -X POST http://localhost:18888/api/instances \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"mode":"local","send_transport":"tcp","recv_transport":"udp","spoof_ip":"1.2.3.4","spoof_port":443}')
+            -d '{"name":"Test Tunnel","mode":"local","send_transport":"tcp","recv_transport":"udp","spoof_ip":"1.2.3.4","spoof_port":443}')
+          echo "$INST"
+          echo "$INST" | grep -q "Test Tunnel" || exit 1
+          INST_ID=$(echo "$INST" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          echo "Instance ID: $INST_ID"
+
+          # List instances
+          echo "--- List instances ---"
+          LIST=$(curl -s http://localhost:18888/api/instances \
+            -H "Authorization: Bearer $TOKEN")
+          echo "$LIST"
+          echo "$LIST" | grep -q "send_transport" || exit 1
+
+          # Get instance
+          echo "--- Get instance ---"
+          GET=$(curl -s http://localhost:18888/api/instances/$INST_ID \
+            -H "Authorization: Bearer $TOKEN")
+          echo "$GET"
+          echo "$GET" | grep -q "tcp" || exit 1
+
+          # Update instance
+          echo "--- Update instance ---"
+          UPD=$(curl -s -X PUT http://localhost:18888/api/instances/$INST_ID \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"Updated Tunnel","mode":"remote","send_transport":"icmp","recv_transport":"udp"}')
           echo "$UPD"
-          echo "$UPD" | grep -q "tcp" || exit 1
+          echo "$UPD" | grep -q "Updated Tunnel" || exit 1
+
+          # Set spoof IPs
+          echo "--- Set spoof IPs ---"
+          SIPS=$(curl -s -X PUT http://localhost:18888/api/instances/$INST_ID/spoof-ips \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"content":"1.2.3.4\n5.6.7.8"}')
+          echo "$SIPS"
+          echo "$SIPS" | grep -q '"ok":true' || exit 1
+
+          # Delete instance
+          echo "--- Delete instance ---"
+          DEL=$(curl -s -X DELETE http://localhost:18888/api/instances/$INST_ID \
+            -H "Authorization: Bearer $TOKEN")
+          echo "$DEL"
+          echo "$DEL" | grep -q '"ok":true' || exit 1
 
           # Frontend serving
           HTML_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18888/)
