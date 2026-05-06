@@ -29,7 +29,7 @@ function EditContent() {
   const [activeTab, setActiveTab] = useState<"config" | "spoofips" | "logs">("config");
   const [logs, setLogs] = useState<string[]>([]);
 
-  const fetchData = async () => {
+  const fetchConfig = async () => {
     if (!id) return;
     try {
       const data = await api.getInstance(id);
@@ -42,6 +42,16 @@ function EditContent() {
     }
   };
 
+  const fetchStatus = async () => {
+    if (!id) return;
+    try {
+      const data = await api.getInstance(id);
+      setStatus(data.status);
+      setUptime(data.uptime);
+      setStatusError(data.error || "");
+    } catch { }
+  };
+
   const fetchSpoofIPs = async () => {
     if (!id) return;
     try {
@@ -52,9 +62,9 @@ function EditContent() {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchConfig();
     fetchSpoofIPs();
-    const interval = setInterval(fetchData, 3000);
+    const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
   }, [id]);
 
@@ -102,7 +112,7 @@ function EditContent() {
       if (action === "start") await api.instanceStart(id);
       else if (action === "stop") await api.instanceStop(id);
       else await api.instanceRestart(id);
-      setTimeout(fetchData, 800);
+      setTimeout(fetchStatus, 800);
     } catch (err: any) {
       alert(err.message);
     }

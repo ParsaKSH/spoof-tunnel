@@ -36,9 +36,13 @@ type Instance struct {
 	mu        sync.Mutex
 	logLines  []string
 	logMu     sync.RWMutex
-	logCh     chan string
 	maxLogs   int
 	startTime time.Time
+
+	// Log broadcasting to multiple WebSocket subscribers
+	subMu   sync.Mutex
+	subID   int
+	subs    map[int]chan string
 }
 
 func newInstance(id uint) *Instance {
@@ -46,8 +50,8 @@ func newInstance(id uint) *Instance {
 		ID:       id,
 		status:   StatusStopped,
 		logLines: make([]string, 0, 1000),
-		logCh:    make(chan string, 100),
 		maxLogs:  1000,
+		subs:     make(map[int]chan string),
 	}
 }
 
@@ -224,10 +228,26 @@ func (m *Manager) InstanceLogs(id uint, n int) []string {
 	return result
 }
 
-// InstanceLogChannel returns the log channel for WebSocket streaming
-func (m *Manager) InstanceLogChannel(id uint) <-chan string {
+// SubscribeLogs creates a new log subscription channel for an instance
+func (m *Manager) SubscribeLogs(id uint) (int, <-chan string) {
 	inst := m.getInstance(id)
-	return inst.logCh
+	inst.subMu.Lock()
+	defer inst.subMu.Unlock()
+	inst.subID++
+	ch := make(chan string, 100)
+	inst.subs[inst.subID] = ch
+	return inst.subID, ch
+}
+
+// UnsubscribeLogs removes a log subscription
+func (m *Manager) UnsubscribeLogs(id uint, subID int) {
+	inst := m.getInstance(id)
+	inst.subMu.Lock()
+	defer inst.subMu.Unlock()
+	if ch, ok := inst.subs[subID]; ok {
+		close(ch)
+		delete(inst.subs, subID)
+	}
 }
 
 // RemoveInstance cleans up instance state after deletion
@@ -311,17 +331,7 @@ func (m *Manager) GetLogs(n int) []string {
 	return nil
 }
 
-// LogChannel returns log channel from the first instance
-func (m *Manager) LogChannel() <-chan string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for id := range m.instances {
-		return m.InstanceLogChannel(id)
-	}
-	ch := make(chan string)
-	close(ch)
-	return ch
-}
+// LogChannel is deprecated — use SubscribeLogs/UnsubscribeLogs instead
 
 // BinaryPath returns the path to the spoof binary
 func (m *Manager) BinaryPath() string {
@@ -393,9 +403,14 @@ func streamLogs(inst *Instance, reader io.Reader) {
 		}
 		inst.logMu.Unlock()
 
-		select {
-		case inst.logCh <- line:
-		default:
+		// Broadcast to all subscribers
+		inst.subMu.Lock()
+		for _, ch := range inst.subs {
+			select {
+			case ch <- line:
+			default:
+			}
 		}
+		inst.subMu.Unlock()
 	}
 }

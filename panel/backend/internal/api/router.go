@@ -110,13 +110,22 @@ func (s *Server) setupRoutes() {
 // authMiddleware validates JWT tokens
 func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var tokenStr string
+
+		// Check Authorization header first
 		header := c.GetHeader("Authorization")
-		if header == "" {
+		if header != "" {
+			tokenStr = strings.TrimPrefix(header, "Bearer ")
+		} else {
+			// Fallback to query param (used by WebSocket)
+			tokenStr = c.Query("token")
+		}
+
+		if tokenStr == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "no token"})
 			return
 		}
 
-		tokenStr := strings.TrimPrefix(header, "Bearer ")
 		claims, err := auth.ValidateToken(tokenStr)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})

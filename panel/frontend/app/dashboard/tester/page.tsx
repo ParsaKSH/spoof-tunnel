@@ -22,6 +22,7 @@ export default function TesterPage() {
   const [tab, setTab] = useState<"receiver" | "sender">("receiver");
   const [state, setState] = useState<TesterState>({ status: "idle", mode: "", progress: 0, results: [] });
   const [ipList, setIpList] = useState("");
+  const [copied, setCopied] = useState(false);
   const [protocol, setProtocol] = useState("icmp");
   const [dstIP, setDstIP] = useState("");
   const [dstPort, setDstPort] = useState(80);
@@ -112,6 +113,8 @@ export default function TesterPage() {
   const handleCopyPassedIPs = () => {
     const ips = results.filter(r => r.passed).map(r => r.ip).join("\n");
     copyToClipboard(ips);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownloadPassedIPs = () => {
@@ -328,8 +331,18 @@ export default function TesterPage() {
 
               {/* Action buttons */}
               <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-                <button className="btn btn-ghost" onClick={handleCopyPassedIPs} style={{ fontSize: 12 }}>
-                  📋 Copy Passed IPs
+                <button
+                  className="btn btn-ghost"
+                  onClick={handleCopyPassedIPs}
+                  style={{
+                    fontSize: 12,
+                    transition: "all 0.3s",
+                    background: copied ? "var(--success)" : undefined,
+                    color: copied ? "white" : undefined,
+                    borderColor: copied ? "var(--success)" : undefined,
+                  }}
+                >
+                  {copied ? "✓ Copied!" : "📋 Copy Passed IPs"}
                 </button>
                 <button className="btn btn-ghost" onClick={handleDownloadPassedIPs} style={{ fontSize: 12 }}>
                   📥 Download spoof-ips.txt

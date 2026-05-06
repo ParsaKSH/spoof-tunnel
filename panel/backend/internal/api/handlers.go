@@ -383,8 +383,22 @@ func (s *Server) handleInstanceLogs(c *gin.Context) {
 		conn.WriteMessage(websocket.TextMessage, []byte(line))
 	}
 
+	// Subscribe for new logs
+	subID, logCh := s.manager.SubscribeLogs(id)
+	defer s.manager.UnsubscribeLogs(id, subID)
+
+	// Detect client disconnect via a read goroutine
+	done := make(chan struct{})
+	go func() {
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				close(done)
+				return
+			}
+		}
+	}()
+
 	// Stream new logs
-	logCh := s.manager.InstanceLogChannel(id)
 	for {
 		select {
 		case line, ok := <-logCh:
@@ -394,6 +408,8 @@ func (s *Server) handleInstanceLogs(c *gin.Context) {
 			if err := conn.WriteMessage(websocket.TextMessage, []byte(line)); err != nil {
 				return
 			}
+		case <-done:
+			return
 		}
 	}
 }
