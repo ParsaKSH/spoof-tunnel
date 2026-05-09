@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ParsaKSH/spoof-tunnel/internal/config"
 	"github.com/ParsaKSH/spoof-tunnel/internal/relay"
@@ -372,11 +373,17 @@ func testerCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			requireRoot()
 
-			srcIPs, err := tester.ParseIPList(srcList)
+			// Parse IPs from file into compact range set (memory-efficient)
+			f, err := os.Open(srcList)
 			if err != nil {
 				log.Fatalf("src-list: %v", err)
 			}
-			log.Printf("[tester] loaded %d source IPs from %s", len(srcIPs), srcList)
+			ranges, err := tester.ParseIPRangesFromReader(f)
+			f.Close()
+			if err != nil {
+				log.Fatalf("src-list: %v", err)
+			}
+			log.Printf("[tester] loaded %d source IPs from %s", ranges.Total(), srcList)
 
 			cfg := tester.TesterConfig{
 				Mode:          mode,
@@ -399,11 +406,11 @@ func testerCmd() *cobra.Command {
 				if dstIP == "" {
 					log.Fatal("--dst-ip is required for sender mode")
 				}
-				if err := runner.RunSender(cfg, srcIPs); err != nil {
+				if err := runner.RunSender(cfg, ranges); err != nil {
 					log.Fatalf("tester sender: %v", err)
 				}
 			case "receiver":
-				if err := runner.RunReceiver(cfg, srcIPs); err != nil {
+				if err := runner.RunReceiver(cfg, ranges); err != nil {
 					log.Fatalf("tester receiver: %v", err)
 				}
 			default:
@@ -419,22 +426,22 @@ func testerCmd() *cobra.Command {
 					}
 					// Print results for receiver
 					if mode == "receiver" {
+						results, err := runner.Results()
+						if err != nil {
+							log.Fatalf("read results: %v", err)
+						}
 						passed := 0
-						for _, r := range state.Results {
+						for _, r := range results {
 							if r.Passed {
 								fmt.Printf("%s %d/%d %.1f%%\n", r.IP, r.Received, r.Sent, r.LossPct)
 								passed++
 							}
 						}
-						log.Printf("[tester] %d/%d IPs passed", passed, len(state.Results))
+						log.Printf("[tester] %d/%d IPs passed", passed, state.TotalIPs)
 					}
 					break
 				}
-				// Small sleep to avoid busy-waiting
-				select {
-				case <-make(chan struct{}):
-				default:
-				}
+				time.Sleep(500 * time.Millisecond)
 			}
 		},
 	}

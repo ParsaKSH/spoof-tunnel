@@ -16,7 +16,7 @@ jobs:
   # ─── Stage 1: Build Next.js frontend ───
   build-frontend:
     name: Build Frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +46,7 @@ jobs:
   # ─── Stage 2: Build spoof-tunnel binary ───
   build-tunnel:
     name: Build Tunnel (${{ matrix.goarch }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
@@ -80,7 +80,7 @@ jobs:
   build-panel:
     name: Build Panel (${{ matrix.goarch }})
     needs: build-frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
@@ -127,7 +127,7 @@ jobs:
   test:
     name: Smoke Test
     needs: build-panel
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Download panel binary
         uses: actions/download-artifact@v4
@@ -171,7 +171,7 @@ jobs:
   release:
     name: Create Release
     needs: [build-panel, build-tunnel, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
 

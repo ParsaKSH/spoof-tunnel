@@ -16,7 +16,7 @@ env:
 jobs:
   # ─── Test Rust ───
   test-rust:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +35,7 @@ jobs:
   # ─── Build spoof-tunnel (CGO_ENABLED=1, Rust + Go, Linux only) ───
   build-tunnel:
     needs: test-rust
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
@@ -100,7 +100,7 @@ jobs:
 
   # ─── Build panel frontend ───
   build-frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
 
@@ -125,7 +125,7 @@ jobs:
   # ─── Build panel (pure Go, CGO_ENABLED=0, static binary) ───
   build-panel:
     needs: build-frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
@@ -174,7 +174,7 @@ jobs:
   # ─── Create Release (tunnel + panel) ───
   release:
     needs: [build-tunnel, build-panel]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
 

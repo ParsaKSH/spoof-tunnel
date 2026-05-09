@@ -15,12 +15,15 @@ type TesterState = {
   mode: string;
   error?: string;
   progress: number;
+  total_ips: number;
+  passed_count: number;
+  recv_count: number;
   results: TesterResult[];
 };
 
 export default function TesterPage() {
   const [tab, setTab] = useState<"receiver" | "sender">("receiver");
-  const [state, setState] = useState<TesterState>({ status: "idle", mode: "", progress: 0, results: [] });
+  const [state, setState] = useState<TesterState>({ status: "idle", mode: "", progress: 0, total_ips: 0, passed_count: 0, recv_count: 0, results: [] });
   const [ipList, setIpList] = useState("");
   const [copied, setCopied] = useState(false);
   const [protocol, setProtocol] = useState("icmp");
@@ -46,7 +49,7 @@ export default function TesterPage() {
             clearInterval(pollRef.current);
           }
         } catch { }
-      }, 1000);
+      }, 2000);
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [state.status]);
@@ -68,7 +71,7 @@ export default function TesterPage() {
         max_packet_loss: maxLoss,
         concurrency,
       });
-      setState({ status: "running", mode: tab, progress: 0, results: [] });
+      setState({ status: "running", mode: tab, progress: 0, total_ips: 0, passed_count: 0, recv_count: 0, results: [] });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -129,8 +132,9 @@ export default function TesterPage() {
   };
 
   const results = state.results || [];
-  const passedCount = results.filter(r => r.passed).length;
-  const failedCount = results.length - passedCount;
+  const passedCount = state.passed_count || results.filter(r => r.passed).length;
+  const totalIPs = state.total_ips || results.length;
+  const receivedCount = results.length;
 
   const lossColor = (pct: number) => {
     if (pct <= 10) return "var(--success)";
@@ -312,20 +316,37 @@ export default function TesterPage() {
           )}
 
           {/* Results Summary */}
-          {results.length > 0 && (
+          {(results.length > 0 || state.recv_count > 0) && (
             <>
+              {/* Live indicator */}
+              {state.status === "running" && state.mode === "receiver" && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8, marginBottom: 12,
+                  padding: "8px 14px", borderRadius: 8,
+                  background: "#22c55e10", border: "1px solid #22c55e30",
+                }}>
+                  <span style={{
+                    display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                    background: "#22c55e", animation: "pulse 1.5s infinite",
+                  }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--success)" }}>LIVE</span>
+                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                    Receiving packets... {state.recv_count} IPs detected so far
+                  </span>
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
                 <div style={{ background: "var(--bg-secondary)", borderRadius: 8, padding: "12px", textAlign: "center" }}>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{results.length}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Total</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{totalIPs.toLocaleString()}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Total IPs</div>
                 </div>
                 <div style={{ background: "#22c55e15", borderRadius: 8, padding: "12px", textAlign: "center" }}>
                   <div style={{ fontSize: 22, fontWeight: 700, color: "var(--success)" }}>{passedCount}</div>
                   <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Passed</div>
                 </div>
-                <div style={{ background: "#ef444415", borderRadius: 8, padding: "12px", textAlign: "center" }}>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--danger)" }}>{failedCount}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Failed</div>
+                <div style={{ background: "#3b82f615", borderRadius: 8, padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#3b82f6" }}>{receivedCount}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>Received</div>
                 </div>
               </div>
 

@@ -484,13 +484,13 @@ func (s *Server) handleTesterStart(c *gin.Context) {
 		return
 	}
 
-	srcIPs, err := tester.ParseIPListFromString(req.IPList)
+	ranges, err := tester.ParseIPRangesFromString(req.IPList)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid IP list: " + err.Error()})
 		return
 	}
 
-	if len(srcIPs) == 0 {
+	if ranges.Total() == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "IP list is empty"})
 		return
 	}
@@ -508,12 +508,12 @@ func (s *Server) handleTesterStart(c *gin.Context) {
 
 	switch req.Mode {
 	case "sender":
-		if err := s.tester.RunSender(cfg, srcIPs); err != nil {
+		if err := s.tester.RunSender(cfg, ranges); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 	case "receiver":
-		if err := s.tester.RunReceiver(cfg, srcIPs); err != nil {
+		if err := s.tester.RunReceiver(cfg, ranges); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -522,11 +522,18 @@ func (s *Server) handleTesterStart(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "started", "ip_count": len(srcIPs)})
+	c.JSON(http.StatusOK, gin.H{"status": "started", "ip_count": ranges.Total()})
 }
 
 func (s *Server) handleTesterStatus(c *gin.Context) {
 	state := s.tester.State()
+	// Load results: live during running receiver, from disk when done
+	if state.Status == "done" || (state.Status == "running" && state.Mode == "receiver") {
+		results, err := s.tester.Results()
+		if err == nil {
+			state.Results = results
+		}
+	}
 	c.JSON(http.StatusOK, state)
 }
 
@@ -537,27 +544,21 @@ func (s *Server) handleTesterStop(c *gin.Context) {
 
 func (s *Server) handleTesterResults(c *gin.Context) {
 	state := s.tester.State()
+	results, _ := s.tester.Results()
 	c.JSON(http.StatusOK, gin.H{
 		"status":  state.Status,
-		"results": state.Results,
+		"results": results,
 	})
 }
 
 func (s *Server) handleTesterDownload(c *gin.Context) {
-	state := s.tester.State()
-	if len(state.Results) == 0 {
+	passedIPs, err := s.tester.PassedIPs()
+	if err != nil || len(passedIPs) == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no results"})
 		return
 	}
 
-	var lines []string
-	for _, r := range state.Results {
-		if r.Passed {
-			lines = append(lines, r.IP)
-		}
-	}
-
-	content := strings.Join(lines, "\n") + "\n"
+	content := strings.Join(passedIPs, "\n") + "\n"
 	c.Header("Content-Disposition", "attachment; filename=spoof-ips.txt")
 	c.Data(http.StatusOK, "text/plain", []byte(content))
 }
