@@ -199,17 +199,21 @@ export default function TesterPage() {
                 <label style={{ fontSize: 13, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Destination IP (Receiver Server)</label>
                 <input className="input" value={dstIP} onChange={e => setDstIP(e.target.value)} placeholder="e.g. 1.2.3.4" />
               </div>
-              {protocol === "tcp" && (
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: 13, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Destination Port</label>
-                  <input className="input" type="number" value={dstPort} onChange={e => setDstPort(+e.target.value)} />
-                </div>
-              )}
               <div style={{ marginBottom: 14 }}>
                 <label style={{ fontSize: 13, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Concurrency</label>
                 <input className="input" type="number" value={concurrency} onChange={e => setConcurrency(+e.target.value)} min={1} max={1000} />
               </div>
             </>
+          )}
+
+          {/* Shared (TCP only): Port */}
+          {protocol === "tcp" && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 13, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                {tab === "sender" ? "Destination Port" : "Filter Port (0 = all)"}
+              </label>
+              <input className="input" type="number" value={dstPort} onChange={e => setDstPort(+e.target.value)} />
+            </div>
           )}
 
           {/* Receiver: Timeout */}

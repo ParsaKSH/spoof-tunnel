@@ -450,7 +450,7 @@ func testerCmd() *cobra.Command {
 	cmd.Flags().StringVar(&protocol, "protocol", "icmp", "protocol: tcp or icmp")
 	cmd.Flags().StringVar(&srcList, "src-list", "sources.txt", "path to source IPs file")
 	cmd.Flags().StringVar(&dstIP, "dst-ip", "", "destination IP (sender mode)")
-	cmd.Flags().IntVar(&dstPort, "dst-port", 80, "destination port (TCP only)")
+	cmd.Flags().IntVar(&dstPort, "dst-port", 80, "destination/filter port (TCP only, 0=all for receiver)")
 	cmd.Flags().IntVar(&timeout, "timeout", 30, "receiver timeout in seconds")
 	cmd.Flags().IntVar(&packetCount, "packet-count", 10, "packets per source IP")
 	cmd.Flags().Float64Var(&maxPacketLoss, "max-loss", 20.0, "max allowed packet loss %")

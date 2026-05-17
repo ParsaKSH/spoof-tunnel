@@ -488,6 +488,17 @@ func (r *Runner) doReceive(cfg TesterConfig, ranges *IPRangeSet, cancel <-chan s
 			continue
 		}
 
+		// Filter by port if specified and protocol supports it (e.g. TCP)
+		if cfg.DstPort > 0 && proto == syscall.IPPROTO_TCP {
+			if n < ihl+4 {
+				continue
+			}
+			dstPort := binary.BigEndian.Uint16(buf[ihl+2 : ihl+4])
+			if int(dstPort) != cfg.DstPort {
+				continue
+			}
+		}
+
 		r.recvMu.Lock()
 		r.received[srcIPu32]++
 		r.recvMu.Unlock()
