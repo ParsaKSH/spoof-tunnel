@@ -21,6 +21,7 @@ type LocalConfig struct {
 	PeerSpoofIP   net.IP
 	SendTransport string // "tcp", "udp", "icmp", "icmpv6"
 	RecvTransport string // "tcp", "udp", "icmp", "icmpv6"
+	XDPInterface  string // network interface for XDP (empty = disabled)
 }
 
 type Local struct {
@@ -89,9 +90,11 @@ func NewLocal(cfg LocalConfig) (*Local, error) {
 	}
 
 	recver, err := transport.NewReceiver(cfg.RecvTransport, transport.ReceiverConfig{
-		ListenPort:  cfg.RecvPort,
-		PeerSpoofIP: cfg.PeerSpoofIP,
-		BufferSize:  4 * 1024 * 1024,
+		ListenPort:   cfg.RecvPort,
+		PeerSpoofIP:  cfg.PeerSpoofIP,
+		BufferSize:   4 * 1024 * 1024,
+		UseXDP:       cfg.XDPInterface != "",
+		XDPInterface: cfg.XDPInterface,
 	})
 	if err != nil {
 		udpConn.Close()

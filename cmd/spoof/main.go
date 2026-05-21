@@ -54,11 +54,11 @@ func runCmd() *cobra.Command {
 			case "local":
 				runLocal(cfg.Listen, cfg.Remote, cfg.RemotePort, cfg.RecvPort,
 					cfg.SpoofIP, cfg.SpoofPort, cfg.PeerSpoofIP, cfg.SpoofIPFile,
-					cfg.SendTransport, cfg.RecvTransport)
+					cfg.SendTransport, cfg.RecvTransport, cfg.XDPInterface)
 			case "remote":
 				runRemote(cfg.ListenPort, cfg.Forward, cfg.ClientIP, cfg.ClientPort,
 					cfg.SpoofIP, cfg.SpoofPort, cfg.PeerSpoofIP,
-					cfg.SpoofIPFile, cfg.SendTransport, cfg.RecvTransport)
+					cfg.SpoofIPFile, cfg.SendTransport, cfg.RecvTransport, cfg.XDPInterface)
 			default:
 				log.Fatalf("unknown mode in config: %q", cfg.Mode)
 			}
@@ -81,6 +81,7 @@ func localCmd() *cobra.Command {
 		spoofIPFile   string
 		sendTransport string
 		recvTransport string
+		xdpInterface  string
 		configFile    string
 	)
 
@@ -113,7 +114,7 @@ func localCmd() *cobra.Command {
 				log.Fatal("--spoof-ip or --spoof-ip-file is required")
 			}
 
-			runLocal(listen, remoteAddr, remotePort, recvPort, spoofIP, spoofPort, peerSpoofIP, spoofIPFile, sendTransport, recvTransport)
+			runLocal(listen, remoteAddr, remotePort, recvPort, spoofIP, spoofPort, peerSpoofIP, spoofIPFile, sendTransport, recvTransport, xdpInterface)
 		},
 	}
 
@@ -127,6 +128,7 @@ func localCmd() *cobra.Command {
 	cmd.Flags().StringVar(&spoofIPFile, "spoof-ip-file", "", "file with spoof IPs (one per line, round-robin)")
 	cmd.Flags().StringVar(&sendTransport, "send-transport", "", "send transport: tcp, udp, icmp, icmpv6 (default: tcp)")
 	cmd.Flags().StringVar(&recvTransport, "recv-transport", "", "recv transport: tcp, udp, icmp, icmpv6 (default: udp)")
+	cmd.Flags().StringVar(&xdpInterface, "xdp-interface", "", "network interface for XDP acceleration (e.g. eth0)")
 	cmd.Flags().StringVarP(&configFile, "config", "c", "", "path to config file (CLI flags override)")
 
 	return cmd
@@ -144,6 +146,7 @@ func remoteCmd() *cobra.Command {
 		spoofIPFile   string
 		sendTransport string
 		recvTransport string
+		xdpInterface  string
 		configFile    string
 	)
 
@@ -176,7 +179,7 @@ func remoteCmd() *cobra.Command {
 				log.Fatal("--spoof-ip or --spoof-ip-file is required")
 			}
 
-			runRemote(listenPort, forward, clientIP, clientPort, spoofIP, spoofPort, peerSpoofIP, spoofIPFile, sendTransport, recvTransport)
+			runRemote(listenPort, forward, clientIP, clientPort, spoofIP, spoofPort, peerSpoofIP, spoofIPFile, sendTransport, recvTransport, xdpInterface)
 		},
 	}
 
@@ -190,6 +193,7 @@ func remoteCmd() *cobra.Command {
 	cmd.Flags().StringVar(&spoofIPFile, "spoof-ip-file", "", "file with spoof IPs (one per line, round-robin)")
 	cmd.Flags().StringVar(&sendTransport, "send-transport", "", "send transport: tcp, udp, icmp, icmpv6 (default: udp)")
 	cmd.Flags().StringVar(&recvTransport, "recv-transport", "", "recv transport: tcp, udp, icmp, icmpv6 (default: tcp)")
+	cmd.Flags().StringVar(&xdpInterface, "xdp-interface", "", "network interface for XDP acceleration (e.g. eth0)")
 	cmd.Flags().StringVarP(&configFile, "config", "c", "", "path to config file (CLI flags override)")
 
 	return cmd
@@ -211,7 +215,7 @@ func loadSpoofIPs(spoofIP, spoofIPFile string) ([]net.IP, error) {
 	return []net.IP{ip}, nil
 }
 
-func runLocal(listen, remoteAddr string, remotePort, recvPort int, spoofIP string, spoofPort int, peerSpoofIP, spoofIPFile, sendTransport, recvTransport string) {
+func runLocal(listen, remoteAddr string, remotePort, recvPort int, spoofIP string, spoofPort int, peerSpoofIP, spoofIPFile, sendTransport, recvTransport, xdpInterface string) {
 	rIP := net.ParseIP(remoteAddr)
 	if rIP == nil {
 		log.Fatalf("invalid remote IP: %s", remoteAddr)
@@ -252,6 +256,7 @@ func runLocal(listen, remoteAddr string, remotePort, recvPort int, spoofIP strin
 		PeerSpoofIP:   psIP,
 		SendTransport: sendTransport,
 		RecvTransport: recvTransport,
+		XDPInterface:  xdpInterface,
 	}
 
 	l, err := relay.NewLocal(cfg)
@@ -284,7 +289,7 @@ func runLocal(listen, remoteAddr string, remotePort, recvPort int, spoofIP strin
 	l.Run()
 }
 
-func runRemote(listenPort int, forward, clientIP string, clientPort int, spoofIP string, spoofPort int, peerSpoofIP string, spoofIPFile, sendTransport, recvTransport string) {
+func runRemote(listenPort int, forward, clientIP string, clientPort int, spoofIP string, spoofPort int, peerSpoofIP string, spoofIPFile, sendTransport, recvTransport, xdpInterface string) {
 	cIP := net.ParseIP(clientIP)
 	if cIP == nil {
 		log.Fatalf("invalid client-ip: %s", clientIP)
@@ -322,6 +327,7 @@ func runRemote(listenPort int, forward, clientIP string, clientPort int, spoofIP
 		PeerSpoofIP:   psIP,
 		SendTransport: sendTransport,
 		RecvTransport: recvTransport,
+		XDPInterface:  xdpInterface,
 	}
 
 	r, err := relay.NewRemote(cfg)

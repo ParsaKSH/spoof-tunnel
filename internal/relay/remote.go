@@ -21,6 +21,7 @@ type RemoteConfig struct {
 	PeerSpoofIP   net.IP
 	SendTransport string // "tcp", "udp", "icmp", "icmpv6"
 	RecvTransport string // "tcp", "udp", "icmp", "icmpv6"
+	XDPInterface  string // network interface for XDP (empty = disabled)
 }
 
 type Remote struct {
@@ -54,9 +55,11 @@ func NewRemote(cfg RemoteConfig) (*Remote, error) {
 	}
 
 	recver, err := transport.NewReceiver(cfg.RecvTransport, transport.ReceiverConfig{
-		ListenPort:  cfg.ListenPort,
-		PeerSpoofIP: cfg.PeerSpoofIP,
-		BufferSize:  4 * 1024 * 1024,
+		ListenPort:   cfg.ListenPort,
+		PeerSpoofIP:  cfg.PeerSpoofIP,
+		BufferSize:   4 * 1024 * 1024,
+		UseXDP:       cfg.XDPInterface != "",
+		XDPInterface: cfg.XDPInterface,
 	})
 	if err != nil {
 		if icmpSuppressed {

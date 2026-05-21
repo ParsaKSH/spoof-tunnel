@@ -1,0 +1,22 @@
+[package]
+name = "xdp-loader"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+aya = "0.13"
+aya-log = "0.2"
+libc = "0.2"
+log = "0.4"
+env_logger = "0.11"
+
+[build-dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "symbols"

@@ -34,6 +34,9 @@ type Config struct {
 	// Transport selection per direction
 	SendTransport string `json:"send_transport,omitempty"` // "tcp", "udp", "icmp", "icmpv6"
 	RecvTransport string `json:"recv_transport,omitempty"` // "tcp", "udp", "icmp", "icmpv6"
+
+	// XDP/eBPF acceleration (receive path)
+	XDPInterface string `json:"xdp_interface,omitempty"` // NIC to attach XDP to (e.g. "eth0")
 }
 
 func Load(path string) (*Config, error) {

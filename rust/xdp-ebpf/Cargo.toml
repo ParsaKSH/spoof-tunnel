@@ -1,0 +1,25 @@
+[package]
+name = "xdp-ebpf"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "xdp-ebpf"
+path = "src/main.rs"
+
+[dependencies]
+aya-ebpf = "0.1"
+aya-ebpf-bindings = "0.1"
+
+[profile.dev]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+
+[profile.release]
+lto = true
+panic = "abort"
+codegen-units = 1
+debug = 2
+strip = false

@@ -42,4 +42,10 @@ SpoofHandle spoof_icmpv6_receiver_new(uint8_t* peer_ip, int32_t buf_size);
 int32_t spoof_icmpv6_receiver_recv(SpoofHandle h, uint8_t* out_buf, uintptr_t out_buf_len, uint8_t* src_ip_out);
 void spoof_icmpv6_receiver_close(SpoofHandle h);
 
+// XDP Receiver (high-performance kernel-bypass receive)
+SpoofHandle spoof_xdp_receiver_new(const char* interface_name, uint8_t* peer_spoof_ip, uint16_t listen_port, uint8_t protocol);
+int32_t spoof_xdp_receiver_recv(SpoofHandle h, uint8_t* out_buf, uintptr_t out_buf_len, uint8_t* src_ip_out, uint16_t* src_port_out);
+void spoof_xdp_receiver_close(SpoofHandle h);
+int32_t spoof_xdp_available(void);
+
 #endif

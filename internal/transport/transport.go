@@ -24,9 +24,11 @@ type SenderConfig struct {
 
 // ReceiverConfig holds config shared by all receivers.
 type ReceiverConfig struct {
-	ListenPort  uint16 // Port to filter incoming packets on
-	PeerSpoofIP net.IP // Expected source IP for filtering (nil = accept all)
-	BufferSize  int    // SO_RCVBUF size
+	ListenPort   uint16 // Port to filter incoming packets on
+	PeerSpoofIP  net.IP // Expected source IP for filtering (nil = accept all)
+	BufferSize   int    // SO_RCVBUF size
+	UseXDP       bool   // Enable XDP/eBPF acceleration
+	XDPInterface string // Network interface for XDP (e.g. "eth0")
 }
 
 // Validate checks the sender config.

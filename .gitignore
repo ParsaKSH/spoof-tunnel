@@ -88,3 +88,7 @@ next-env.d.ts
 panel/backend/panel
 spoof-linux-amd64
 spoof-panel-linux-amd64
+
+# XDP eBPF build artifacts
+rust/xdp-ebpf/target/
+rust/xdp-loader/target/

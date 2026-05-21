@@ -1,6 +1,9 @@
 //! spoof-transport: High-performance raw socket transport layer.
 //!
 //! Exposes a C ABI for Go via CGo. Supports TCP, UDP, ICMP, ICMPv6.
+//! Also links xdp-loader for XDP/eBPF kernel-bypass receive support.
+
+extern crate xdp_loader;
 
 mod checksum;
 mod raw_socket;
