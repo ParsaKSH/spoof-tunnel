@@ -30,6 +30,9 @@ jobs:
         with:
           workspaces: rust/xdp-ebpf
 
+      - name: Install bpf-linker
+        run: cargo install bpf-linker
+
       - name: Build eBPF program
         working-directory: rust/xdp-ebpf
         run: |
